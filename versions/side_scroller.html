@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>横スクロール ゲーム雛形</title>
+<style>
+  body { margin:0; background:#222; display:flex; flex-direction:column; align-items:center; font-family:sans-serif; color:#fff; }
+  canvas { background:#87ceeb; max-width:100%; image-rendering:pixelated; }
+  #touch { display:flex; gap:12px; margin-top:8px; user-select:none; }
+  #touch button { width:72px; height:56px; font-size:22px; border-radius:10px; border:none; }
+</style>
+</head>
+<body>
+<canvas id="game" width="800" height="400"></canvas>
+<div id="touch">
+  <button data-key="left">◀</button>
+  <button data-key="right">▶</button>
+  <button data-key="jump">⤒</button>
+</div>
+<p>←→ / A D：移動　Space / ↑ / W：ジャンプ　R：リスタート</p>
+
+<script>
+// ===== 設定 =====
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const GRAVITY = 0.6, MOVE_SPEED = 4, JUMP_POWER = 12;
+const WORLD_WIDTH = 3000;
+
+// ===== ステージ（ここを編集して面を作る） =====
+const platforms = [
+  { x: 0,    y: 360, w: 900, h: 40 },   // 地面
+  { x: 1000, y: 360, w: 700, h: 40 },   // 穴のあとの地面
+  { x: 1800, y: 360, w: 1200, h: 40 },
+  { x: 400,  y: 270, w: 120, h: 20 },   // 浮き足場
+  { x: 1250, y: 250, w: 150, h: 20 },
+  { x: 2100, y: 280, w: 100, h: 20 },
+  { x: 2300, y: 210, w: 100, h: 20 },
+];
+const goal = { x: 2850, y: 260, w: 20, h: 100 };
+
+// ===== プレイヤー =====
+const player = { x: 50, y: 300, w: 30, h: 40, vx: 0, vy: 0, onGround: false };
+let cameraX = 0, state = 'playing'; // playing | clear
+
+// ===== 入力 =====
+const input = { left: false, right: false, jump: false };
+const keyMap = { ArrowLeft:'left', KeyA:'left', ArrowRight:'right', KeyD:'right',
+                 Space:'jump', ArrowUp:'jump', KeyW:'jump' };
+addEventListener('keydown', e => {
+  if (keyMap[e.code]) { input[keyMap[e.code]] = true; e.preventDefault(); }
+  if (e.code === 'KeyR') reset();
+});
+addEventListener('keyup', e => { if (keyMap[e.code]) input[keyMap[e.code]] = false; });
+document.querySelectorAll('#touch button').forEach(b => {
+  const k = b.dataset.key;
+  b.addEventListener('pointerdown', e => { input[k] = true; e.preventDefault(); });
+  ['pointerup','pointerleave','pointercancel'].forEach(ev => b.addEventListener(ev, () => input[k] = false));
+});
+
+function reset() {
+  Object.assign(player, { x: 50, y: 300, vx: 0, vy: 0, onGround: false });
+  state = 'playing';
+}
+
+const hit = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
+// ===== 更新 =====
+function update() {
+  if (state !== 'playing') return;
+
+  player.vx = (input.right - input.left) * MOVE_SPEED;
+  if (input.jump && player.onGround) { player.vy = -JUMP_POWER; player.onGround = false; }
+  player.vy += GRAVITY;
+
+  // 横移動と衝突
+  player.x += player.vx;
+  for (const p of platforms) if (hit(player, p)) {
+    player.x = player.vx > 0 ? p.x - player.w : p.x + p.w;
+  }
+  player.x = Math.max(0, Math.min(player.x, WORLD_WIDTH - player.w));
+
+  // 縦移動と衝突
+  player.y += player.vy;
+  player.onGround = false;
+  for (const p of platforms) if (hit(player, p)) {
+    if (player.vy > 0) { player.y = p.y - player.h; player.onGround = true; }
+    else { player.y = p.y + p.h; }
+    player.vy = 0;
+  }
+
+  if (player.y > canvas.height + 100) reset();   // 穴に落ちた
+  if (hit(player, goal)) state = 'clear';         // ゴール
+
+  // カメラ追従
+  cameraX = Math.max(0, Math.min(player.x - canvas.width / 3, WORLD_WIDTH - canvas.width));
+}
+
+// ===== 描画 =====
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(-cameraX, 0);
+
+  ctx.fillStyle = '#8b5a2b';
+  platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
+
+  ctx.fillStyle = '#555'; ctx.fillRect(goal.x, goal.y, 6, goal.h);   // 旗のポール
+  ctx.fillStyle = '#f33'; ctx.fillRect(goal.x + 6, goal.y, 30, 20);  // 旗
+
+  ctx.fillStyle = '#ff0'; ctx.fillRect(player.x, player.y, player.w, player.h);
+  ctx.restore();
+
+  ctx.fillStyle = '#000'; ctx.font = '16px sans-serif';
+  ctx.fillText(`ゴールまで: ${Math.max(0, Math.round(goal.x - player.x))}px`, 10, 22);
+
+  if (state === 'clear') {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('GOAL!', canvas.width / 2, canvas.height / 2);
+    ctx.font = '20px sans-serif';
+    ctx.fillText('R キーでもう一度', canvas.width / 2, canvas.height / 2 + 40);
+    ctx.textAlign = 'left';
+  }
+}
+
+(function loop() { update(); draw(); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>

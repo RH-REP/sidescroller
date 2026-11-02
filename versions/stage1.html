@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ステージ1 草原 ― 動く床</title>
+<style>
+  body { margin:0; background:#222; display:flex; flex-direction:column; align-items:center; font-family:sans-serif; color:#fff; }
+  canvas { background:#9fd8ff; max-width:100%; }
+  #touch { display:flex; gap:12px; margin-top:8px; user-select:none; touch-action:none; }
+  #touch button { width:72px; height:56px; font-size:22px; border-radius:10px; border:none; }
+</style>
+</head>
+<body>
+<canvas id="game" width="800" height="400"></canvas>
+<div id="touch">
+  <button data-key="left">◀</button><button data-key="right">▶</button><button data-key="jump">⤒</button>
+</div>
+<p>←→ / A D：移動　Space / ↑ / W：ジャンプ（長押しで高く）　R：最初から</p>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const GRAVITY = 0.6, MOVE_SPEED = 4, JUMP_POWER = 12, FALL_MAX = 14;
+const COYOTE = 6, JUMP_BUFFER = 6;           // 理不尽さを減らす猶予フレーム
+const WORLD_W = 16200, DT = 1 / 60;
+
+// ================= ステージデータ =================
+const solids = [];   // 動かない地面・壁
+const movers = [];   // 動く床（上から乗れる・下から抜けられる）
+const enemies = [];
+const g = (x1, x2, y = 360) => solids.push({ x: x1, y, w: x2 - x1, h: 600 });
+// 動く床: 基準x, 基準y, 幅, 横振れ幅, 縦振れ幅, 周期(秒), 位相
+const m = (x, y, w, ax, ay, period, phase = 0) =>
+  movers.push({ bx: x, by: y, w, h: 14, ax, ay, period, phase, x, y, dx: 0, dy: 0 });
+const walker = (x, range = 100) => enemies.push({ type: 'walk', sx: x, min: x - range, max: x + range });
+const hopper = (x) => enemies.push({ type: 'hop', sx: x });
+
+// ---- 前半（約2分）：動く床の基本 ----
+g(0, 800);
+m(900, 330, 100, 100, 0, 3);                         // 最初の穴：横に動く床
+g(1150, 1800); walker(1400); walker(1650);
+m(1900, 330, 100, 80, 0, 3); m(2250, 330, 100, 80, 0, 3, Math.PI);   // 逆向きの2枚
+g(2500, 2900);
+m(2780, 270, 80, 0, 90, 4);                          // 上下のリフト
+g(2900, 3400, 180); walker(3150);                    // 高台
+m(3480, 240, 90, 0, 50, 3); m(3700, 280, 90, 0, 60, 3.5, 1.5); m(3950, 300, 90, 80, 0, 3);
+g(4300, 4900); walker(4500); hopper(4640); walker(4780, 80);
+m(5000, 330, 80, 60, 0, 2.5); m(5250, 290, 80, 0, 70, 3);
+m(5500, 320, 80, 80, 0, 2, 1); m(5800, 320, 80, 100, 0, 3, 2);       // 4枚つなぎ
+g(6100, 6700); walker(6300); walker(6550);
+m(6850, 300, 100, 150, 60, 4);                       // 斜めに動く床
+g(7200, 7300, 300);                                  // 足場の柱
+g(7420, 8200);
+const CHECKPOINT_X = 7800;
+
+// ---- 後半（約2分）：速い床と組み立て ----
+m(8300, 330, 80, 60, 0, 1.8); m(8560, 280, 80, 0, 70, 2); m(8780, 320, 80, 70, 0, 1.6);
+g(9000, 9600); walker(9150, 80); walker(9300, 80); hopper(9450);
+m(9500, 255, 80, 0, 105, 3.5);                       // 高い壁へのリフト
+g(9600, 10000, 150); walker(9800);
+m(10100, 180, 70, 70, 0, 2.2); m(10350, 230, 70, 0, 60, 2.4, 1);
+m(10600, 260, 70, 90, 0, 2, 2); m(10900, 300, 70, 80, 0, 2.6);
+g(11200, 11700); walker(11350, 80); hopper(11450); walker(11570, 80);
+m(11800, 330, 70, 60, 0, 2); g(11950, 12010, 300);
+m(12150, 320, 70, 80, 0, 1.7); g(12400, 12460, 260);
+m(12600, 280, 70, 0, 80, 2); m(12780, 320, 70, 50, 0, 1.8);
+g(12950, 13600); walker(13100, 70); walker(13250, 70); walker(13400, 70);
+m(13700, 330, 60, 60, 0, 1.5); m(13950, 250, 60, 0, 90, 2.2); m(14200, 300, 60, 80, 0, 1.4);
+g(14450, 16200);
+// ボス部屋
+const ARENA_L = 15000, ARENA_R = 15900;
+solids.push({ x: ARENA_R, y: -600, w: 300, h: 1200 });               // 右の壁
+const gate = { x: ARENA_L - 40, y: -600, w: 40, h: 960, active: false }; // 入ると閉まる左の壁
+
+// ================= 状態 =================
+const player = { x: 0, y: 0, w: 28, h: 40, vx: 0, vy: 0, ground: null, coyote: 0, buffer: 0, face: 1 };
+let boss, t = 0, cameraX = 0, state = 'playing', checkpoint = 0;
+let attempts = 1, playTime = 0, deadTimer = 0, shake = 0, clearTimer = 0;
+
+function resetEnemies() {
+  enemies.forEach(e => Object.assign(e, { x: e.sx, y: 334, w: 30, h: 26, vx: -1.5, vy: 0, alive: true, timer: 0 }));
+}
+function resetBoss() {
+  boss = { x: 15700, y: 300, w: 90, h: 60, vx: 0, vy: 0, hp: 3, dir: -1, state: 'wait', timer: 0, hopped: false };
+  gate.active = false;
+}
+function respawn() {
+  Object.assign(player, { x: checkpoint ? CHECKPOINT_X : 50, y: 300, vx: 0, vy: 0, ground: null, coyote: 0, buffer: 0 });
+  t = 0; resetEnemies(); resetBoss(); state = 'playing';
+}
+function fullReset() { checkpoint = 0; attempts = 1; playTime = 0; respawn(); }
+function die() { if (state !== 'playing') return; state = 'dead'; deadTimer = 0.8; attempts++; }
+
+// ================= 入力 =================
+const input = { left: false, right: false, jump: false };
+let jumpPressed = false;
+const keyMap = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', Space: 'jump', ArrowUp: 'jump', KeyW: 'jump' };
+const press = k => { if (k === 'jump' && !input.jump) jumpPressed = true; input[k] = true; };
+addEventListener('keydown', e => {
+  if (keyMap[e.code]) { press(keyMap[e.code]); e.preventDefault(); }
+  if (e.code === 'KeyR') fullReset();
+});
+addEventListener('keyup', e => { if (keyMap[e.code]) input[keyMap[e.code]] = false; });
+document.querySelectorAll('#touch button').forEach(b => {
+  const k = b.dataset.key;
+  b.addEventListener('pointerdown', e => { press(k); e.preventDefault(); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, () => input[k] = false));
+});
+
+const hit = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+const activeSolids = () => gate.active ? solids.concat([gate]) : solids;
+
+// ================= 更新 =================
+function updateMovers() {
+  for (const p of movers) {
+    const a = 2 * Math.PI * t / p.period + p.phase;
+    const nx = p.bx + p.ax * Math.sin(a), ny = p.by + p.ay * Math.sin(a);
+    p.dx = nx - p.x; p.dy = ny - p.y; p.x = nx; p.y = ny;
+  }
+}
+
+function updatePlayer() {
+  const P = player;
+  P.vx = (input.right - input.left) * MOVE_SPEED;
+  if (P.vx) P.face = Math.sign(P.vx);
+  if (jumpPressed) P.buffer = JUMP_BUFFER;
+  jumpPressed = false;
+  if (P.ground) P.coyote = COYOTE; else if (P.coyote > 0) P.coyote--;
+  if (P.buffer > 0) {
+    P.buffer--;
+    if (P.coyote > 0) { P.vy = -JUMP_POWER; P.ground = null; P.coyote = 0; P.buffer = 0; }
+  }
+  if (!input.jump && P.vy < -4) P.vy = -4;       // ボタンを離すと低いジャンプ
+
+  // 動く床に乗っていれば一緒に運ばれる
+  if (P.ground && P.ground.period) {
+    const p = P.ground;
+    P.x += p.dx; P.y = p.y - P.h;
+    if (P.x + P.w < p.x || P.x > p.x + p.w) P.ground = null;
+  }
+
+  const S = activeSolids();
+  P.x += P.vx;
+  for (const s of S) if (hit(P, s)) P.x = P.vx > 0 || (P.ground && P.ground.dx > 0) ? s.x - P.w : s.x + s.w;
+  if (P.x < 0) P.x = 0;
+
+  const prevBottom = P.y + P.h;
+  P.vy = Math.min(P.vy + GRAVITY, FALL_MAX);
+  if (P.ground && P.ground.period && P.vy >= 0) P.vy = 0;
+  P.y += P.vy;
+  const wasGround = P.ground; P.ground = null;
+  for (const s of S) if (hit(P, s)) {
+    if (P.vy >= 0) { P.y = s.y - P.h; P.ground = s; } else P.y = s.y + s.h;
+    P.vy = 0;
+  }
+  if (!P.ground && P.vy >= 0) {
+    for (const p of movers) {
+      const pPrevTop = p.y - p.dy;
+      if (P.x + P.w > p.x && P.x < p.x + p.w && prevBottom <= pPrevTop + 2 + Math.max(0, -p.dy) && P.y + P.h >= p.y) {
+        P.y = p.y - P.h; P.vy = 0; P.ground = p; break;
+      }
+    }
+  }
+  if (!P.ground && wasGround && wasGround.period && P.vy === 0) {
+    // 床がすぐ上下に動いたときに外れないように
+    const p = wasGround;
+    if (P.x + P.w > p.x && P.x < p.x + p.w && Math.abs(P.y + P.h - p.y) < 16) { P.y = p.y - P.h; P.ground = p; }
+  }
+
+  if (P.y > 520) die();
+  if (!checkpoint && P.x >= CHECKPOINT_X) checkpoint = 1;
+  if (!gate.active && P.x > ARENA_L + 60) { gate.active = true; boss.state = 'idle'; boss.timer = 1.2; }
+}
+
+function updateEnemies() {
+  const P = player;
+  for (const e of enemies) {
+    if (!e.alive) continue;
+    if (Math.abs(e.x - P.x) > 900) continue;      // 画面外では止める（毎回同じ動きにするため）
+    if (e.type === 'walk') {
+      e.x += e.vx;
+      if (e.x < e.min || e.x > e.max) e.vx *= -1;
+    } else {                                      // 一定のリズムで跳ねる
+      e.timer += DT;
+      if (e.y >= 334 && e.timer > 1.2) { e.vy = -11; e.timer = 0; }
+      e.vy += GRAVITY; e.y = Math.min(334, e.y + e.vy);
+      if (e.y >= 334) e.vy = 0;
+    }
+    if (hit(P, e)) {
+      if (P.vy > 0 && P.y + P.h - P.vy <= e.y + 10) { e.alive = false; P.vy = input.jump ? -11 : -7; }
+      else die();
+    }
+  }
+}
+
+const CHARGE_SPEED = [10, 8.5, 7], STUN_TIME = [1.1, 1.4, 1.8];   // 添字 = 残りHP-1
+function updateBoss() {
+  const B = boss, P = player;
+  if (B.state === 'wait') return;
+  B.timer -= DT;
+  switch (B.state) {
+    case 'idle':
+      B.dir = Math.sign(P.x - B.x) || -1;
+      if (B.timer <= 0) {
+        if (B.hp < 3 && !B.hopped) { B.state = 'hopPrep'; B.timer = 0.5; }
+        else { B.state = 'prep'; B.timer = 0.7; }
+      }
+      break;
+    case 'hopPrep':                               // しゃがむ → プレイヤーの位置へ跳ぶ
+      if (B.timer <= 0) {
+        const target = Math.max(ARENA_L, Math.min(ARENA_R - B.w, P.x - B.w / 2));
+        B.vy = -13; B.vx = (target - B.x) / 43; B.state = 'hop'; B.hopped = true;
+      }
+      break;
+    case 'hop':
+      B.vy += GRAVITY; B.x += B.vx; B.y += B.vy;
+      B.x = Math.max(ARENA_L, Math.min(ARENA_R - B.w, B.x));
+      if (B.y >= 300) { B.y = 300; B.vy = 0; B.state = 'prep'; B.timer = 0.6; shake = 8; B.dir = Math.sign(P.x - B.x) || -1; }
+      break;
+    case 'prep':                                  // 足で地面をかく（予告）
+      if (B.timer <= 0) { B.state = 'charge'; B.vx = B.dir * CHARGE_SPEED[B.hp - 1]; }
+      break;
+    case 'charge':
+      B.x += B.vx;
+      if (B.x <= ARENA_L || B.x + B.w >= ARENA_R) {
+        B.x = Math.max(ARENA_L, Math.min(ARENA_R - B.w, B.x));
+        B.state = 'stun'; B.timer = STUN_TIME[B.hp - 1]; shake = 12;
+      }
+      break;
+    case 'stun':
+      if (B.timer <= 0) { B.state = 'idle'; B.timer = 0.8; }
+      break;
+    case 'hurt':
+      if (B.timer <= 0) {
+        if (B.hp <= 0) { B.state = 'dead'; clearTimer = 1.5; }
+        else { B.state = 'idle'; B.timer = 1.0; B.hopped = false; }
+      }
+      break;
+  }
+  if (B.state !== 'dead' && B.state !== 'hurt' && hit(P, B)) {
+    const stomp = P.vy > 0 && P.y + P.h - P.vy <= B.y + 12;
+    if (stomp && B.state === 'stun') { B.hp--; B.state = 'hurt'; B.timer = 0.6; P.vy = -11; shake = 6; }
+    else if (stomp) P.vy = -9;                    // 気絶していない時に踏んでも弾かれるだけ
+    else if (B.state !== 'stun') die();
+  }
+}
+
+function update() {
+  if (state === 'clear') return;
+  if (state === 'dead') { deadTimer -= DT; if (deadTimer <= 0) respawn(); return; }
+  t += DT; playTime += DT;
+  updateMovers(); updatePlayer(); updateEnemies(); updateBoss();
+  if (boss.state === 'dead') { clearTimer -= DT; if (clearTimer <= 0) state = 'clear'; }
+  const minCam = gate.active ? ARENA_L - 40 : 0;
+  cameraX = Math.max(minCam, Math.min(player.x - canvas.width / 3, WORLD_W - canvas.width));
+  if (shake > 0) shake--;
+}
+
+// ================= 描画 =================
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(-Math.round(cameraX) + (shake ? (Math.random() - 0.5) * shake : 0), 0);
+
+  // 遠くの丘（ゆっくりスクロール）
+  ctx.fillStyle = '#7cc47c';
+  for (let i = -1; i < 40; i++) { const hx = i * 400 + cameraX * 0.5; ctx.beginPath(); ctx.arc(hx, 400, 180, Math.PI, 0); ctx.fill(); }
+
+  for (const s of solids) { ctx.fillStyle = '#8b5a2b'; ctx.fillRect(s.x, s.y, s.w, s.h); ctx.fillStyle = '#3fa03f'; ctx.fillRect(s.x, s.y, s.w, 8); }
+  if (gate.active) { ctx.fillStyle = '#666'; ctx.fillRect(gate.x, gate.y, gate.w, gate.h); }
+  ctx.fillStyle = '#d9a441';
+  for (const p of movers) { ctx.fillRect(p.x, p.y, p.w, p.h); }
+
+  // 中間セーブの旗
+  ctx.fillStyle = '#555'; ctx.fillRect(CHECKPOINT_X, 260, 5, 100);
+  ctx.fillStyle = checkpoint ? '#3c3' : '#ccc'; ctx.fillRect(CHECKPOINT_X + 5, 260, 28, 18);
+
+  for (const e of enemies) if (e.alive) {
+    ctx.fillStyle = e.type === 'walk' ? '#7a3fbf' : '#d04080'; ctx.fillRect(e.x, e.y, e.w, e.h);
+    ctx.fillStyle = '#fff'; ctx.fillRect(e.x + 6, e.y + 6, 5, 5); ctx.fillRect(e.x + 19, e.y + 6, 5, 5);
+  }
+
+  // ボス（イノシシ）
+  const B = boss;
+  if (B.state !== 'dead' || clearTimer > 0) {
+    const jitter = B.state === 'prep' ? (Math.random() - 0.5) * 4 : 0;
+    const blink = B.state === 'hurt' && Math.floor(B.timer * 20) % 2;
+    if (!blink) {
+      ctx.fillStyle = B.state === 'stun' ? '#a07050' : B.state === 'dead' ? '#777' : '#6b3e1f';
+      ctx.fillRect(B.x + jitter, B.y, B.w, B.h);
+      const fx = B.dir > 0 ? B.x + B.w - 8 : B.x - 12;
+      ctx.fillStyle = '#fff'; ctx.fillRect(fx + jitter, B.y + 34, 20, 6);          // 牙
+      ctx.fillStyle = B.state === 'stun' ? '#ff0' : '#f33';
+      ctx.fillRect((B.dir > 0 ? B.x + B.w - 24 : B.x + 12) + jitter, B.y + 12, 8, 8); // 目
+      if (B.state === 'stun') { ctx.fillStyle = '#ff0'; ctx.font = '20px sans-serif'; ctx.fillText('★ ★', B.x + 20, B.y - 8); }
+    }
+  }
+
+  // プレイヤー
+  if (state !== 'dead' || Math.floor(deadTimer * 10) % 2) {
+    const P = player;
+    ctx.fillStyle = '#ffd400'; ctx.fillRect(P.x, P.y, P.w, P.h);
+    ctx.fillStyle = '#000'; ctx.fillRect(P.face > 0 ? P.x + 18 : P.x + 4, P.y + 10, 5, 5);
+  }
+  ctx.restore();
+
+  // HUD
+  ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, canvas.width, 30);
+  ctx.fillStyle = '#fff'; ctx.font = '16px sans-serif';
+  const mm = Math.floor(playTime / 60), ss = String(Math.floor(playTime % 60)).padStart(2, '0');
+  ctx.fillText(`ステージ1 草原　挑戦 ${attempts} 回目　時間 ${mm}:${ss}　${checkpoint ? '後半' : '前半'}`, 10, 21);
+  if (gate.active) {
+    ctx.fillText('イノシシ', 520, 21);
+    for (let i = 0; i < 3; i++) { ctx.fillStyle = i < boss.hp ? '#f33' : '#555'; ctx.fillRect(600 + i * 40, 8, 34, 14); }
+  }
+  if (state === 'clear') {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+    ctx.font = 'bold 44px sans-serif'; ctx.fillText('STAGE 1 CLEAR!', 400, 170);
+    ctx.font = '20px sans-serif';
+    ctx.fillText(`挑戦回数 ${attempts} 回　プレイ時間 ${mm}:${ss}`, 400, 220);
+    ctx.fillText('R キーで最初から', 400, 260);
+    ctx.textAlign = 'left';
+  }
+}
+
+fullReset();
+(function loop() { update(); draw(); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>
