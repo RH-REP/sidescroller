@@ -467,7 +467,7 @@ const ARENA_BUILD = {
 };
 
 function loadStage(n) {
-  STAGE = n; ST = STAGES[n - 1]; MAX_HP = MAX_HP_BY_STAGE[n - 1]; SWORD = !!ST.sword;
+  STAGE = n; ST = STAGES[n - 1]; MAX_HP = MAX_HP_BY_STAGE[n - 1] * hpScale(); SWORD = !!ST.sword;
   solids = []; movers = []; enemyDefs = []; heartDefs = []; checkpoints = []; worldTop = 0; chunkLog = [];
   const end = n === 1 ? buildStage1() : buildGenerated();
   buildArena(end);
@@ -492,6 +492,9 @@ function saveProgress() { try { localStorage.setItem('sidescroll10_progress', JS
 // 中間セーブ：通った中間地点・挑戦回数・時間を progress.resume に1つだけ残す（デバッグ中は残さない）
 function saveResume() { if (debug || cp === 0) return; progress.resume = { stage: STAGE, cp, attempts, playTime: Math.floor(playTime) }; saveProgress(); }
 function clearResume(n) { if (debug || !progress.resume || progress.resume.stage !== n) return; delete progress.resume; saveProgress(); }
+// EASY モード：プレイヤーの HP（と、ハートの回復量）を10倍。ステージ選択で切り替え、次に面を始めたときから効く
+const hpScale = () => progress.easy ? 10 : 1;
+function toggleEasy() { progress.easy = !progress.easy; saveProgress(); }
 
 const ENEMY_STATS = {
   walk:  { w: 30, h: 26, hp: 2, dmg: 1 },
@@ -563,6 +566,7 @@ function menuKey(code) {
     if (code === 'ArrowDown' || code === 'KeyS') selCursor = Math.min(9, selCursor + 5);
     if (code === 'ArrowUp' || code === 'KeyW') selCursor = Math.max(0, selCursor - 5);
     if (go && unlocked(selCursor + 1)) chooseStage(selCursor + 1);
+    if (code === 'KeyE') toggleEasy();
     return true;
   }
   if (state === 'sections') { if (code === 'Escape') state = 'select'; const d = parseInt(code.replace('Digit', ''), 10); if (d >= 1 && d <= checkpoints.length + 1) startStage(STAGE, d - 1); return true; }
@@ -638,6 +642,7 @@ function screenButtons() {
   if (state === 'select') {
     const list = [];
     for (let i = 0; i < 10; i++) list.push({ id: 'stage' + (i + 1), n: i + 1, x: 70 + (i % 5) * 136, y: 110 + Math.floor(i / 5) * 120, w: 120, h: 100 });
+    list.push({ id: 'easy', label: progress.easy ? 'EASY ON' : 'EASY OFF', on: !!progress.easy, x: 560, y: 46, w: 140, h: 44 });   // 右上の角（デバッグのタップ）には掛けない
     return list;
   }
   if (state === 'sections') {
@@ -688,7 +693,7 @@ function handleScreenTap(e) {
   if (!b) return true;
   if (b.n) { selCursor = b.n - 1; if (unlocked(b.n)) chooseStage(b.n); }
   else if (b.id.startsWith('sec')) startStage(STAGE, parseInt(b.id.slice(3), 10));
-  else ({ resume, retry: retryStage, select: goSelect, fs: toggleFullscreen, install: openGuide, inv: () => { invincible = !invincible; },
+  else ({ resume, retry: retryStage, select: goSelect, fs: toggleFullscreen, install: openGuide, easy: toggleEasy, inv: () => { invincible = !invincible; },
           next: () => startOrResume(STAGE + 1), back: () => { state = 'select'; } })[b.id]();
   return true;
 }
@@ -813,7 +818,7 @@ function updatePlayer() {
     Object.assign(P, { x: P.safe.x, y: P.safe.y, vx: 0, vy: 0, kb: 0, ground: null, inv: INVINCIBLE });
   }
   for (const h of hearts) if (!h.taken && hit(P, { x: h.x - 12, y: h.y - 12, w: 24, h: 24 })) {
-    h.taken = true; P.hp = Math.min(P.maxHp, P.hp + 3); burst(h.x, h.y, '#f6a', 10);
+    h.taken = true; P.hp = Math.min(P.maxHp, P.hp + 3 * hpScale()); burst(h.x, h.y, '#f6a', 10);
   }
   if (debugStartX == null || P.x > debugStartX + 100) {
     for (let i = checkpoints.length - 1; i > cp; i--) if (P.x >= checkpoints[i]) { cp = i; burst(checkpoints[i] + 15, topAt(checkpoints[i]) - 90, '#3c3', 12); saveResume(); break; }
@@ -1411,7 +1416,7 @@ function update() {
     clearTimer -= DT;
     if (clearTimer <= 0 && state === 'playing') {
       state = 'clear';
-      if (!debug) { progress.cleared = Math.max(progress.cleared, STAGE); const b = progress.best[STAGE]; if (!b || attempts < b) progress.best[STAGE] = attempts; saveProgress(); clearResume(STAGE); }
+      if (!debug) { progress.cleared = Math.max(progress.cleared, STAGE); const b = progress.best[STAGE]; if (!progress.easy && (!b || attempts < b)) progress.best[STAGE] = attempts; saveProgress(); clearResume(STAGE); }   // EASY では最少回数を更新しない
     }
   }
   const minCam = gate.active ? arena.L - 40 : 0;
@@ -1527,12 +1532,17 @@ function drawHud() {
   const maxHp = P.maxHp || MAX_HP;
   if (maxHp <= 10) for (let i = 0; i < maxHp; i++) drawHeart(16 + i * 19, 12, 16, i < (P.hp || 0) ? '#f36' : '#444');
   else {                                                   // ボス戦（最大HPが3倍）は棒と数字
-    ctx.fillStyle = '#444'; ctx.fillRect(10, 9, 120, 14); ctx.fillStyle = kiai > 0 ? '#ffe060' : '#f36'; ctx.fillRect(10, 9, 120 * Math.max(0, P.hp) / maxHp, 14);
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 13px sans-serif'; ctx.fillText(`HP ${Math.max(0, P.hp)}/${maxHp}`, 136, 21);
+    const bw = maxHp > 99 ? 100 : 120;                   // EASY（3桁）は棒を短くして数字を収める
+    ctx.fillStyle = '#444'; ctx.fillRect(10, 9, bw, 14); ctx.fillStyle = kiai > 0 ? '#ffe060' : '#f36'; ctx.fillRect(10, 9, bw * Math.max(0, P.hp) / maxHp, 14);
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${maxHp > 99 ? 12 : 13}px sans-serif`; ctx.fillText(`HP ${Math.max(0, P.hp)}/${maxHp}`, bw + 16, 21);
   }
   ctx.fillStyle = '#fff'; ctx.font = '14px sans-serif';
   const mm = Math.floor(playTime / 60), ss = String(Math.floor(playTime % 60)).padStart(2, '0');
-  ctx.fillText(`${STAGE}-${cp + 1}　挑戦 ${attempts}　${mm}:${ss}${debug ? '　DEBUG' : ''}`, 210, 21);
+  const status = `${STAGE}-${cp + 1}　挑戦 ${attempts}　${mm}:${ss}${progress.easy ? '　EASY' : ''}${debug ? '　DEBUG' : ''}`;
+  const sw = ctx.measureText(status).width;               // ボス名（x=430）に掛かるなら字を小さくする
+  if (sw > 212) ctx.font = `${Math.max(10, Math.floor(14 * 212 / sw))}px sans-serif`;
+  ctx.fillText(status, 210, 21);
+  ctx.font = '14px sans-serif';
   if (gate.active) {
     ctx.fillText(ST.bossName, 430, 21);
     ctx.fillStyle = '#400'; ctx.fillRect(560, 10, 140, 12);
@@ -1547,7 +1557,7 @@ function drawHud() {
 function drawButtons() {
   for (const b of screenButtons()) {
     if (b.n) continue;
-    ctx.fillStyle = b.id === 'resume' || b.id === 'next' ? '#2a7' : '#555'; ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = b.id === 'resume' || b.id === 'next' || b.on ? '#2a7' : '#555'; ctx.fillRect(b.x, b.y, b.w, b.h);
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.strokeRect(b.x, b.y, b.w, b.h);
     ctx.fillStyle = '#fff'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(b.label, b.x + b.w / 2, b.y + 28); ctx.textAlign = 'left';
   }
@@ -1597,6 +1607,7 @@ function drawMenu() {
   } else if (state === 'select') {
     ctx.font = 'bold 26px sans-serif'; ctx.fillText('ステージ選択', VW / 2, 70);
     for (const b of screenButtons()) {
+      if (!b.n) continue;
       const n = b.n, st = STAGES[n - 1], open = unlocked(n), cleared = n <= progress.cleared;
       ctx.fillStyle = !open ? '#333' : cleared ? '#2a6a4a' : '#3a4a7a'; ctx.fillRect(b.x, b.y, b.w, b.h);
       ctx.strokeStyle = selCursor === n - 1 ? '#ffd400' : '#fff'; ctx.lineWidth = selCursor === n - 1 ? 3 : 1; ctx.strokeRect(b.x, b.y, b.w, b.h);
@@ -1608,6 +1619,7 @@ function drawMenu() {
       }
     }
     ctx.font = '13px sans-serif'; ctx.fillText(debug ? 'デバッグモード：全ステージ選択可・開始地点を選べます' : '', VW / 2, 365);
+    drawButtons(); ctx.textAlign = 'center';
   } else if (state === 'sections') {
     ctx.font = 'bold 24px sans-serif'; ctx.fillText(`ステージ${STAGE} ${ST.name}　開始地点（デバッグ）`, VW / 2, 120);
     ctx.font = '14px sans-serif'; ctx.fillText(`ギミック：${ST.gimmick}　区間：${ST.secs.map(s => s / 60 + '分').join('：')}　部品 ${chunkLog.length} 個`, VW / 2, 160);
