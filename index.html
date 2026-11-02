@@ -1455,7 +1455,11 @@ function drawBanner() {
 }
 
 loadStage(1); resetWorld();
-(function loop() { update(); draw(); requestAnimationFrame(loop); })();
+(function loop() {
+  update(); draw();
+  pad.classList.toggle('menu', state !== 'playing' && state !== 'dead');   // 操作ボタンは遊んでいる間だけ（メニューの邪魔をしない）
+  requestAnimationFrame(loop);
+})();
 </script>
 </body>
 </html>
