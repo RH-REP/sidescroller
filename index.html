@@ -343,6 +343,9 @@ let debug = false, invincible = false, selCursor = 0, debugStartX = null;
 let progress = { cleared: 0, best: {} };
 try { progress = Object.assign(progress, JSON.parse(localStorage.getItem('sidescroll10_progress') || '{}')); } catch (_) {}
 function saveProgress() { try { localStorage.setItem('sidescroll10_progress', JSON.stringify(progress)); } catch (_) {} }
+// 中間セーブ：通った中間地点・挑戦回数・時間を progress.resume に1つだけ残す（デバッグ中は残さない）
+function saveResume() { if (debug || cp === 0) return; progress.resume = { stage: STAGE, cp, attempts, playTime: Math.floor(playTime) }; saveProgress(); }
+function clearResume(n) { if (debug || !progress.resume || progress.resume.stage !== n) return; delete progress.resume; saveProgress(); }
 
 const ENEMY_STATS = {
   walk:  { w: 30, h: 26, hp: 2, dmg: 1 },
@@ -401,7 +404,7 @@ addEventListener('keydown', e => {
   if (e.repeat) return;
   if (menuKey(e.code)) return;
   if (k) { edge(k, true, input[k]); kb[k] = true; }
-  if (e.code === 'KeyR' && (state === 'playing' || state === 'paused')) startStage(STAGE);
+  if (e.code === 'KeyR' && (state === 'playing' || state === 'paused')) retryStage();
   if (e.code === 'KeyP' || e.code === 'Escape') { e.preventDefault(); togglePause(); }
 });
 addEventListener('keyup', e => { const k = keyMap[e.code]; if (k) kb[k] = false; });
@@ -417,7 +420,7 @@ function menuKey(code) {
     return true;
   }
   if (state === 'sections') { if (code === 'Escape') state = 'select'; const d = parseInt(code.replace('Digit', ''), 10); if (d >= 1 && d <= checkpoints.length + 1) startStage(STAGE, d - 1); return true; }
-  if (state === 'clear' && go) { STAGE < 10 ? startStage(STAGE + 1) : goSelect(); return true; }
+  if (state === 'clear' && go) { STAGE < 10 ? startOrResume(STAGE + 1) : goSelect(); return true; }
   if (state === 'clear' && code === 'Escape') { goSelect(); return true; }
   return false;
 }
@@ -500,7 +503,15 @@ function handleCornerTap(p) {                           // デバッグ：左上
 }
 function canvasPoint(e) { const r = canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) * VW / r.width, y: (e.clientY - r.top) * VH / r.height }; }
 const inside = (p, b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
-function chooseStage(n) { if (debug) { loadStage(n); state = 'sections'; } else startStage(n); }
+function chooseStage(n) { if (debug) { loadStage(n); state = 'sections'; } else startOrResume(n); }
+function startOrResume(n) {                             // 中間セーブがあれば、その中間地点から続ける
+  startStage(n);
+  const r = progress.resume;
+  if (debug || !r || r.stage !== n) return;
+  if (!(r.cp > 0 && r.cp < checkpoints.length)) { clearResume(n); return; }
+  cp = r.cp; respawn(); attempts = r.attempts || 1; playTime = r.playTime || 0;
+}
+function retryStage() { clearResume(STAGE); startStage(STAGE); }
 function handleScreenTap(e) {
   const p = canvasPoint(e);
   if (state === 'title' || state === 'select') { if (handleCornerTap(p)) return true; }
@@ -511,11 +522,11 @@ function handleScreenTap(e) {
   if (!b) return true;
   if (b.n) { selCursor = b.n - 1; if (unlocked(b.n)) chooseStage(b.n); }
   else if (b.id.startsWith('sec')) startStage(STAGE, parseInt(b.id.slice(3), 10));
-  else ({ resume, retry: () => startStage(STAGE), select: goSelect, fs: toggleFullscreen, inv: () => { invincible = !invincible; },
-          next: () => startStage(STAGE + 1), back: () => { state = 'select'; } })[b.id]();
+  else ({ resume, retry: retryStage, select: goSelect, fs: toggleFullscreen, inv: () => { invincible = !invincible; },
+          next: () => startOrResume(STAGE + 1), back: () => { state = 'select'; } })[b.id]();
   return true;
 }
-function pause() { if (state !== 'playing') return; state = 'paused'; pointers.clear(); syncTouch(); for (const k in kb) kb[k] = false; }
+function pause() { if (state !== 'playing') return; saveResume(); state = 'paused'; pointers.clear(); syncTouch(); for (const k in kb) kb[k] = false; }
 function resume() { if (state !== 'paused') return; state = 'playing'; jumpPressed = attackPressed = false; }
 function togglePause() { state === 'paused' ? resume() : pause(); }
 
@@ -536,7 +547,7 @@ function hurt(dmg, srcX) {
   if (navigator.vibrate) navigator.vibrate(40);
   if (P.hp <= 0) die();
 }
-function die() { if (state !== 'playing') return; player.hp = 0; state = 'dead'; deadTimer = 1.0; attempts++; }
+function die() { if (state !== 'playing') return; player.hp = 0; state = 'dead'; deadTimer = 1.0; attempts++; saveResume(); }
 function swordBox() {
   const P = player;
   return P.face > 0 ? { x: P.x + P.w - 4, y: P.y - 10, w: SWORD_REACH, h: P.h + 18 } : { x: P.x - SWORD_REACH + 4, y: P.y - 10, w: SWORD_REACH, h: P.h + 18 };
@@ -639,7 +650,7 @@ function updatePlayer() {
     h.taken = true; P.hp = Math.min(P.maxHp, P.hp + 3); burst(h.x, h.y, '#f6a', 10);
   }
   if (debugStartX == null || P.x > debugStartX + 100) {
-    for (let i = checkpoints.length - 1; i > cp; i--) if (P.x >= checkpoints[i]) { cp = i; burst(checkpoints[i] + 15, topAt(checkpoints[i]) - 90, '#3c3', 12); break; }
+    for (let i = checkpoints.length - 1; i > cp; i--) if (P.x >= checkpoints[i]) { cp = i; burst(checkpoints[i] + 15, topAt(checkpoints[i]) - 90, '#3c3', 12); saveResume(); break; }
   }
   if (!gate.active && P.x > arena.L + 60) {                // ボス部屋：気合いでHPの最大値が3倍になり全回復
     gate.active = true; kiai = 1.2; kiaiFrom = P.hp; P.maxHp = MAX_HP * 3; P.vx = 0; P.attack = 0;
@@ -1234,7 +1245,7 @@ function update() {
     clearTimer -= DT;
     if (clearTimer <= 0 && state === 'playing') {
       state = 'clear';
-      if (!debug) { progress.cleared = Math.max(progress.cleared, STAGE); const b = progress.best[STAGE]; if (!b || attempts < b) progress.best[STAGE] = attempts; saveProgress(); }
+      if (!debug) { progress.cleared = Math.max(progress.cleared, STAGE); const b = progress.best[STAGE]; if (!b || attempts < b) progress.best[STAGE] = attempts; saveProgress(); clearResume(STAGE); }
     }
   }
   const minCam = gate.active ? arena.L - 40 : 0;
@@ -1421,6 +1432,9 @@ function drawMenu() {
       ctx.fillStyle = '#fff'; ctx.font = 'bold 22px sans-serif'; ctx.fillText(open ? String(n) : '🔒', b.x + b.w / 2, b.y + 34);
       ctx.font = '14px sans-serif'; ctx.fillText(st.name, b.x + b.w / 2, b.y + 58);
       if (cleared) { ctx.font = '12px sans-serif'; ctx.fillText(`★ 最少${progress.best[n] || '-'}回`, b.x + b.w / 2, b.y + 82); }
+      if (!debug && progress.resume && progress.resume.stage === n) {   // 中間セーブのある面に小さな旗
+        ctx.fillStyle = '#ddd'; ctx.fillRect(b.x + b.w - 24, b.y + 8, 3, 22); ctx.fillStyle = '#3c3'; ctx.fillRect(b.x + b.w - 21, b.y + 8, 14, 9);
+      }
     }
     ctx.font = '13px sans-serif'; ctx.fillText(debug ? 'デバッグモード：全ステージ選択可・開始地点を選べます' : '', VW / 2, 365);
   } else if (state === 'sections') {

@@ -16,7 +16,7 @@
 
 - `start.command`: `index.html` をブラウザで開く。
 - `update.command`: このフォルダ（clone）に最新を取り込む（`git pull --ff-only`）。
-- データ: クリアした面はブラウザの localStorage（`sidescroll10_progress`）に残る。ファイルには何も書かない。記録（`log/`）も作らない。
+- データ: クリアした面と中間セーブ（1つ）はブラウザの localStorage（`sidescroll10_progress`）に残る。中間セーブは、その面をクリアするか「やり直し」で消える。ファイルには何も書かない。記録（`log/`）も作らない。
 
 ## テスト
 
@@ -27,6 +27,7 @@ cd tests
 sh extract.sh            # index.html から g.js を取り出す
 node ui.js               # デバッグモードの角のタップと、ステージ選択
 node k.js                # ボス部屋での気合いと、やられたあとのHP
+node save.js             # 中間セーブが再読み込みのあとも残るか
 node gh.js info          # 全10面の地形の概要
 ```
 
