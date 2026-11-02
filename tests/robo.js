@@ -14,7 +14,7 @@ function reset(x) {                      // ボスを第1形態の止まった�
 for (const hold of [99, 6, 3]) {
   const ok = [];
   for (let j = 0; j < 100; j++) {
-    reset(A().L + 120);
+    reset(A().L + 330);                  // 台の下だと頭がつかえるので、台の無い所で測る
     boss.n = 0; boss.state = 'laser'; BOSS.robo.update(boss, A()); boss.state = 'pause'; boss.timer = 1e9;
     const hp0 = player.hp; let hk = 0;
     for (let f = 0; f < 130; f++) { if (f === j) { jumpPressed = true; hk = hold; } kb.jump = hk-- > 0; loop(); }
@@ -26,7 +26,7 @@ for (const hold of [99, 6, 3]) {
 for (const n of [0, 2]) for (const hold of [99, 6]) {
   const ok = [];
   for (let j = 0; j < 140; j++) {
-    reset(A().L + 120); boss.phase = 2;
+    reset(A().L + 330); boss.phase = 2;
     boss.n = n; boss.state = 'laser'; BOSS.robo.update(boss, A()); boss.state = 'pause'; boss.timer = 1e9;
     const hp0 = player.hp; let hk = 0;
     for (let f = 0; f < 170; f++) { if (f === j) { jumpPressed = true; hk = hold; } kb.jump = hk-- > 0; loop(); }
@@ -34,6 +34,26 @@ for (const n of [0, 2]) for (const hold of [99, 6]) {
   }
   r['phase2_' + (n ? 'highFirst' : 'lowFirst') + '_hold' + hold] = ok.length ? ok[0] + '..' + ok[ok.length - 1] + ' (' + ok.length + 'f)' : 'none';
 }
+// 1c) 台：何もしないで台の上（または床）に立っていたとき、低い・高いレーザーに当たるか。第2形態は、1本目が消えたら台から降りる・台に乗る
+const plats = liveSolids.filter(s => s.h === 20 && s.y === A().F - 64);
+r.platforms = plats.map(p => Math.round(p.x - A().L) + '..' + Math.round(p.x + p.w - A().L)).join(', ') + ' (床から64px)';
+function laserOnce(n, phase, startOnPlat, act) {   // act(f, beams) は毎フレームの操作
+  const p = plats[0];
+  reset(startOnPlat ? p.x + 40 : p.x - 40);
+  if (startOnPlat) { player.y = p.y - player.h; for (let i = 0; i < 5; i++) loop(); }
+  boss.phase = phase; boss.n = n; boss.state = 'laser'; BOSS.robo.update(boss, A()); boss.state = 'pause'; boss.timer = 1e9;
+  const hp0 = player.hp;
+  for (let f = 0; f < 170; f++) { kb.left = kb.right = kb.jump = false; act && act(f); loop(); }
+  kb.left = kb.right = kb.jump = false;
+  return player.hp === hp0 ? 'safe' : 'hit';
+}
+r.plat_low_stand = laserOnce(0, 1, true) + '（台の上・低いレーザー）';
+r.plat_high_stand = laserOnce(2, 1, true) + '（台の上・高いレーザー）';
+r.floor_high_stand = laserOnce(2, 1, false) + '（床・高いレーザー）';
+const firstGone = () => shots.filter(s => s.kind === 'beam').length < 2;
+r.phase2_lowFirst_platThenDown = laserOnce(0, 2, true, f => { if (firstGone()) kb.left = true; });
+let jumped = false;
+r.phase2_highFirst_floorThenUp = laserOnce(2, 2, false, f => { if (firstGone()) { kb.right = !(player.ground && player.ground.y === plats[0].y); kb.jump = true; if (!jumped) { jumpPressed = true; jumped = true; } } });
 // 2) コアが開いた瞬間に、ばねから run px 左にいて、右とジャンプ（長押し / 押さない）を押し続ける
 const vent = Math.round(60 * 2.4);
 for (const s of liveSolids.filter(s => s.kind === 'spring')) for (const jump of [true, false]) {

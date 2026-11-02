@@ -306,7 +306,9 @@ const ARENA_BUILD = {
   spider(A) { g(A.L, A.L + 250, A.F); for (let x = A.L + 250; x < A.R - 250; x += 40) tile(x, A.F); g(A.R - 250, A.R, A.F); },
   golem(A) { g(A.L, A.R, A.F, 'ice'); },
   // 本体は天井まで届く壁（上に乗れない）。右のばねから右を押して跳ぶと、壁に沿って落ちてコアを踏める
-  robo(A) { g(A.L, A.R, A.F); spring(A.L + 260, A.F); spring(A.L + 600, A.F); solids.push({ x: A.R - 130, y: A.F - 1500, w: 130, h: 1500, kind: 'robobody' }); },
+  // 台（床から64px）：乗ると低いレーザーの上、高いレーザーには当たる。下はくぐれる
+  robo(A) { g(A.L, A.R, A.F); spring(A.L + 260, A.F); spring(A.L + 600, A.F); plat(A.L + 90, A.L + 210, A.F - 64); plat(A.L + 400, A.L + 520, A.F - 64);
+    solids.push({ x: A.R - 130, y: A.F - 1500, w: 130, h: 1500, kind: 'robobody' }); },
   knight(A) { g(A.L, A.R, A.F); },
   bat(A) { g(A.L, A.R, A.F, 'ice'); for (const cx of [A.L + 230, A.R - 350]) for (let i = 0; i < 3; i++) tile(cx + i * 40, A.F - 110, true); },
   bird(A) { g(A.L, A.R, A.F); spring(A.L + 150, A.F); spring(A.R - 190, A.F); m(A.L + 380, A.F - 130, 90, 120, 0, 3.5); },
