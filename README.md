@@ -28,6 +28,7 @@ sh extract.sh            # index.html から g.js を取り出す
 node ui.js               # デバッグモードの角のタップと、ステージ選択
 node k.js                # ボス部屋での気合いと、やられたあとのHP
 node save.js             # 中間セーブが再読み込みのあとも残るか
+node robo.js             # ロボアーム戦の避けやすさと届きやすさ
 node gh.js info          # 全10面の地形の概要
 ```
 

@@ -305,7 +305,8 @@ const ARENA_BUILD = {
   boar(A) { g(A.L, A.R, A.F); },
   spider(A) { g(A.L, A.L + 250, A.F); for (let x = A.L + 250; x < A.R - 250; x += 40) tile(x, A.F); g(A.R - 250, A.R, A.F); },
   golem(A) { g(A.L, A.R, A.F, 'ice'); },
-  robo(A) { g(A.L, A.R, A.F); spring(A.L + 260, A.F); spring(A.L + 520, A.F); solids.push({ x: A.R - 130, y: A.F - 260, w: 130, h: 260, kind: 'robobody' }); },
+  // 本体は天井まで届く壁（上に乗れない）。右のばねから右を押して跳ぶと、壁に沿って落ちてコアを踏める
+  robo(A) { g(A.L, A.R, A.F); spring(A.L + 260, A.F); spring(A.L + 600, A.F); solids.push({ x: A.R - 130, y: A.F - 1500, w: 130, h: 1500, kind: 'robobody' }); },
   knight(A) { g(A.L, A.R, A.F); },
   bat(A) { g(A.L, A.R, A.F, 'ice'); for (const cx of [A.L + 230, A.R - 350]) for (let i = 0; i < 3; i++) tile(cx + i * 40, A.F - 110, true); },
   bird(A) { g(A.L, A.R, A.F); spring(A.L + 150, A.F); spring(A.R - 190, A.F); m(A.L + 380, A.F - 130, 90, 120, 0, 3.5); },
@@ -890,11 +891,11 @@ const BOSS = {
         case 'slam': addShot({ kind: 'rock', x: px() - 30, y: A.F - 420, w: 60, h: 40, gy: A.F, warn: 42 - tier * 6, dmg: 2 });
           if (B.phase === 2) addShot({ kind: 'rock', x: px() - 30 + (player.face || 1) * 110, y: A.F - 420, w: 60, h: 40, gy: A.F, warn: 58 - tier * 6, dmg: 2 });
           B.n++; B.state = 'pause'; B.timer = 1.1; break;
-        case 'laser': { const high = (B.n >> 1) % 2 === 1, w1 = 40 - tier * 5, w2 = 75 - tier * 5;
-          addShot({ kind: 'beam', x: A.L, y: high ? A.F - 112 : A.F - 26, w: W, h: 18, warn: w1, active: 22, dmg: 2 });
-          if (B.phase === 2) addShot({ kind: 'beam', x: A.L, y: high ? A.F - 26 : A.F - 112, w: W, h: 18, warn: w2, active: 22, dmg: 2 });
-          B.n++; B.state = 'firing'; B.timer = ((B.phase === 2 ? w2 : w1) + 22) / 60 + 0.1; break; }
-        case 'firing': if (B.timer <= 0) { B.state = 'vent'; B.timer = 1.7 - tier * 0.2; } break;   // 撃ち終わり：熱でコアが開く
+        case 'laser': { const high = (B.n >> 1) % 2 === 1, w1 = 54 - tier * 6, w2 = 92 - tier * 6, on = 12;   // 低いレーザーは小ジャンプでも越えられる
+          addShot({ kind: 'beam', x: A.L, y: high ? A.F - 112 : A.F - 12, w: W, h: high ? 18 : 10, warn: w1, active: on, dmg: 2 });
+          if (B.phase === 2) addShot({ kind: 'beam', x: A.L, y: high ? A.F - 12 : A.F - 112, w: W, h: high ? 10 : 18, warn: w2, active: on, dmg: 2 });
+          B.n++; B.state = 'firing'; B.timer = ((B.phase === 2 ? w2 : w1) + on) / 60 + 0.1; break; }
+        case 'firing': if (B.timer <= 0) { B.state = 'vent'; B.timer = 2.4 - tier * 0.3; } break;   // 撃ち終わり：熱でコアが開く
         case 'vent': if (Math.random() < 0.7) particles.push({ x: B.x + Math.random() * B.w, y: B.y, vx: (Math.random() - 0.5), vy: -2 - Math.random() * 2, life: 24, color: '#ddd' });
           if (B.timer <= 0) { B.state = 'idle'; B.timer = 0.5; } break;
         case 'pause': if (B.timer <= 0) { B.state = 'idle'; B.timer = 0.3; } break;
@@ -903,9 +904,9 @@ const BOSS = {
     dizzy: () => false,
     hurtBy: B => B.state === 'vent' ? 2 : 0,
     contact: () => 0,
-    onHit(B) { B.state = 'idle'; B.timer = 1.0; },
+    onHit(B) { B.state = 'idle'; B.timer = 1.0; player.kbVx = -Math.abs(player.kbVx); },   // 反動は壁の反対（左）へ
     draw(B, A) {
-      ctx.fillStyle = '#556'; ctx.fillRect(A.R - 130, A.F - 260, 130, 260);
+      ctx.fillStyle = '#556'; ctx.fillRect(A.R - 130, A.F - 1500, 130, 1500);
       ctx.fillStyle = '#334'; ctx.fillRect(A.R - 120, A.F - 200, 110, 20); ctx.fillRect(A.R - 120, A.F - 120, 110, 20);
       const open = B.state === 'vent';
       if (open) glow(B.x + B.w / 2, B.y + B.h / 2, 30 + Math.sin(t * 20) * 4, 'rgba(255,140,40,0.35)');
@@ -1299,7 +1300,11 @@ function drawShot(s) {
     ctx.fillStyle = s.color || '#887'; ctx.fillRect(s.x, s.y, s.w, s.h); return;
   }
   if (s.kind === 'beam' || s.kind === 'bolt') {
-    if (s.warn > 0) { ctx.fillStyle = Math.floor(s.warn / 4) % 2 ? 'rgba(255,60,60,0.25)' : 'rgba(255,60,60,0.12)'; ctx.fillRect(s.x, s.y, s.w, s.h); return; }
+    if (s.warn > 0) {
+      ctx.fillStyle = Math.floor(s.warn / 4) % 2 ? 'rgba(255,60,60,0.25)' : 'rgba(255,60,60,0.12)'; ctx.fillRect(s.x, s.y, s.w, s.h);
+      if (s.kind === 'beam' && s.warn <= 16) { ctx.fillStyle = 'rgba(255,90,90,0.8)'; ctx.fillRect(s.x, s.y + s.h / 2 - 1, s.w, 3); }   // 撃つ直前：細い線が光る（跳ぶ合図）
+      return;
+    }
     ctx.fillStyle = s.kind === 'beam' ? '#f44' : '#ffe860'; ctx.fillRect(s.x, s.y, s.w, s.h);
   }
 }
