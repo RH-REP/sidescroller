@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="横スクロール">
+<meta name="theme-color" content="#111111">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
 <title>横スクロール 全10ステージ</title>
 <style>
   html, body { margin:0; height:100%; overflow:hidden; background:#111; font-family:sans-serif;
@@ -24,6 +29,28 @@
   #rotate { position:fixed; inset:0; display:none; z-index:3; background:#111; color:#fff; font-size:22px;
     align-items:center; justify-content:center; text-align:center; }
   @media (orientation: portrait) { body.touch #rotate { display:flex; } }
+  /* ホーム画面に追加の案内（メタ的な説明書なので、文章で出してよい） */
+  .gbtn { margin-top:20px; font-size:17px; padding:10px 18px; border-radius:22px; border:1px solid rgba(255,255,255,0.5); background:#2a7; color:#fff; font-family:inherit; }
+  body.installed .gbtn { display:none; }
+  #guide { position:fixed; inset:0; z-index:5; display:none; background:#16181d; color:#eee; overflow-y:auto; touch-action:pan-y; -webkit-overflow-scrolling:touch; }
+  #guide.open { display:block; }
+  .gwrap { max-width:880px; margin:0 auto; padding:calc(12px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 28px calc(16px + env(safe-area-inset-left)); }
+  .ghead { display:flex; align-items:center; gap:12px; }
+  .ghead h2 { flex:1; margin:0; font-size:19px; }
+  .gclose { font-size:16px; padding:8px 14px; border-radius:18px; border:1px solid rgba(255,255,255,0.4); background:#333; color:#fff; font-family:inherit; }
+  .glead { font-size:14px; color:#bbb; margin:8px 0 12px; line-height:1.5; }
+  .gtabs { display:flex; gap:8px; margin-bottom:12px; }
+  .gtab { flex:1; max-width:200px; font-size:15px; padding:9px 0; border-radius:10px; border:1px solid #555; background:#22262e; color:#ccc; font-family:inherit; }
+  #guide[data-tab="ios"] .gtab[data-t="ios"], #guide[data-tab="android"] .gtab[data-t="android"] { background:#2a7; border-color:#2a7; color:#fff; }
+  #guide[data-tab="ios"] .g-android, #guide[data-tab="android"] .g-ios { display:none; }
+  .gsteps { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:12px; }
+  .gstep { background:#22262e; border-radius:12px; padding:10px; }
+  .gstep svg { display:block; width:100%; max-width:150px; margin:0 auto 8px; }
+  .gstep p { margin:0; font-size:14px; line-height:1.55; }
+  .gstep b { color:#ffd400; }
+  .gn { display:inline-block; width:22px; height:22px; border-radius:50%; background:#ff3b30; color:#fff; text-align:center; font-size:13px; line-height:22px; margin-right:6px; font-weight:bold; }
+  .gnote { margin-top:14px; font-size:13px; color:#bbb; line-height:1.6; }
+  .gnote li { margin-bottom:4px; }
 </style>
 </head>
 <body>
@@ -34,7 +61,123 @@
   <div class="btn" id="bA" data-key="attack">⚔</div>
   <div class="btn" id="bJ" data-key="jump">⤒</div>
 </div>
-<div id="rotate">📱↻<br>横向きにしてください</div>
+<div id="rotate"><div>📱↻<br>横向きにしてください<br><button class="gbtn" data-act="guide">📲 全画面で遊ぶ方法</button></div></div>
+<!-- ホーム画面に追加の案内。画面の絵はイメージ（OS・ブラウザの版でボタンの場所や名前が違うことがある） -->
+<div id="guide" data-tab="ios"><div class="gwrap">
+  <div class="ghead"><h2>📲 全画面で遊ぶには</h2><button class="gclose" data-act="close">✕ とじる</button></div>
+  <p class="glead">ホーム画面に追加して、そのアイコンから開くと、ブラウザの枠が消えて全画面で遊べます。</p>
+  <div class="gtabs"><button class="gtab" data-t="ios" data-act="ios">iPhone</button><button class="gtab" data-t="android" data-act="android">Android</button></div>
+
+  <div class="gsteps g-ios">
+    <div class="gstep">
+      <svg viewBox="0 0 120 220" font-family="sans-serif" aria-hidden="true">
+        <rect x="2" y="2" width="116" height="216" rx="16" fill="#0d0d0f"/><rect x="7" y="9" width="106" height="202" rx="11" fill="#9fd8ff"/>
+        <rect x="7" y="140" width="106" height="30" fill="#8b5a2b"/><rect x="7" y="140" width="106" height="5" fill="#3fa03f"/><rect x="40" y="110" width="12" height="18" fill="#ffd400"/>
+        <path d="M7 169h106v31a11 11 0 0 1-11 11H18a11 11 0 0 1-11-11z" fill="#f2f2f5"/>
+        <rect x="14" y="173" width="92" height="12" rx="6" fill="#e1e1e6"/><text x="60" y="181.5" font-size="6" text-anchor="middle" fill="#555">rh-rep.github.io</text>
+        <text x="18" y="199" font-size="11" text-anchor="middle" fill="#0a84ff">‹</text><text x="38" y="199" font-size="11" text-anchor="middle" fill="#bbb">›</text>
+        <g fill="none" stroke="#0a84ff" stroke-width="1.3"><path d="M56 194v6h8v-6"/><path d="M60 197v-9M57.3 190.7L60 188l2.7 2.7"/></g>
+        <g fill="none" stroke="#0a84ff" stroke-width="1.2"><rect x="80" y="192" width="7" height="7" rx="1.5"/><rect x="82.5" y="189.5" width="7" height="7" rx="1.5"/></g>
+        <text x="102" y="198" font-size="11" text-anchor="middle" fill="#0a84ff">…</text>
+        <circle cx="60" cy="194" r="9.5" fill="none" stroke="#ff3b30" stroke-width="2.5"/>
+        <circle cx="102" cy="195" r="8" fill="none" stroke="#ff3b30" stroke-width="1.5" stroke-dasharray="2 2"/>
+      </svg>
+      <p><span class="gn">1</span>Safari で開き、画面の下の <b>共有ボタン</b>（□に↑）を押す。見当たらないときは <b>「…」</b> を押すと「共有」が出てきます。</p>
+    </div>
+    <div class="gstep">
+      <svg viewBox="0 0 120 220" font-family="sans-serif" aria-hidden="true">
+        <rect x="2" y="2" width="116" height="216" rx="16" fill="#0d0d0f"/><rect x="7" y="9" width="106" height="202" rx="11" fill="#9fd8ff"/><rect x="7" y="9" width="106" height="202" rx="11" fill="#000" opacity=".35"/>
+        <rect x="7" y="62" width="106" height="149" rx="11" fill="#f2f2f5"/><rect x="52" y="66" width="16" height="2.5" rx="1.25" fill="#c7c7cc"/>
+        <circle cx="22" cy="84" r="8" fill="#34c759"/><circle cx="44" cy="84" r="8" fill="#0a84ff"/><circle cx="66" cy="84" r="8" fill="#ff9f0a"/><circle cx="88" cy="84" r="8" fill="#8e8e93"/>
+        <rect x="12" y="102" width="96" height="100" rx="6" fill="#fff"/>
+        <g stroke="#e5e5ea" stroke-width=".6"><path d="M17 122h91M17 142h91M17 162h91M17 182h91"/></g>
+        <g font-size="6.2" fill="#111"><text x="17" y="115">コピー</text><text x="17" y="135">リーディングリストに追加</text><text x="17" y="155">ブックマークを追加</text><text x="17" y="175" font-weight="bold">ホーム画面に追加</text><text x="17" y="195">ページを検索</text></g>
+        <g fill="none" stroke="#111" stroke-width=".8"><rect x="96" y="168" width="8" height="8" rx="2"/><path d="M100 170v4M98 172h4"/></g>
+        <rect x="10" y="162" width="100" height="20" rx="5" fill="none" stroke="#ff3b30" stroke-width="2.5"/>
+      </svg>
+      <p><span class="gn">2</span>出てきた一覧を下へずらし、<b>「ホーム画面に追加」</b> を押す。</p>
+    </div>
+    <div class="gstep">
+      <svg viewBox="0 0 120 220" font-family="sans-serif" aria-hidden="true">
+        <rect x="2" y="2" width="116" height="216" rx="16" fill="#0d0d0f"/><rect x="7" y="9" width="106" height="202" rx="11" fill="#f2f2f5"/>
+        <text x="12" y="27" font-size="5" fill="#0a84ff">キャンセル</text><text x="61" y="27" font-size="5.4" text-anchor="middle" font-weight="bold" fill="#111">ホーム画面に追加</text><text x="106" y="27" font-size="7" text-anchor="end" font-weight="bold" fill="#0a84ff">追加</text>
+        <ellipse cx="99" cy="24.5" rx="11" ry="8" fill="none" stroke="#ff3b30" stroke-width="2.5"/>
+        <rect x="12" y="38" width="96" height="40" rx="6" fill="#fff"/><image href="icons/icon-180.png" x="17" y="43" width="30" height="30"/>
+        <text x="53" y="55" font-size="7" fill="#111">横スクロール</text><path d="M53 60h50" stroke="#e5e5ea" stroke-width=".6"/><text x="53" y="69" font-size="5" fill="#888">rh-rep.github.io</text>
+        <rect x="12" y="86" width="96" height="20" rx="6" fill="#fff"/><text x="17" y="98.5" font-size="6.2" fill="#111">Webアプリとして開く</text>
+        <rect x="87" y="90.5" width="17" height="11" rx="5.5" fill="#34c759"/><circle cx="98.5" cy="96" r="4.3" fill="#fff"/>
+        <rect x="9" y="84" width="102" height="24" rx="7" fill="none" stroke="#ff3b30" stroke-width="1.5" stroke-dasharray="2 2"/>
+        <rect x="7" y="146" width="106" height="65" fill="#d1d3d9"/>
+        <g fill="#fff"><rect x="11" y="151" width="9" height="11" rx="2"/><rect x="22" y="151" width="9" height="11" rx="2"/><rect x="33" y="151" width="9" height="11" rx="2"/><rect x="44" y="151" width="9" height="11" rx="2"/><rect x="55" y="151" width="9" height="11" rx="2"/><rect x="66" y="151" width="9" height="11" rx="2"/><rect x="77" y="151" width="9" height="11" rx="2"/><rect x="88" y="151" width="9" height="11" rx="2"/><rect x="99" y="151" width="9" height="11" rx="2"/><rect x="16" y="166" width="88" height="11" rx="2"/></g>
+      </svg>
+      <p><span class="gn">3</span><b>「Webアプリとして開く」</b> がオン（緑）なのを見て、右上の <b>「追加」</b> を押す。この項目が無い版もあります。</p>
+    </div>
+    <div class="gstep">
+      <svg viewBox="0 0 120 220" font-family="sans-serif" aria-hidden="true">
+        <rect x="2" y="2" width="116" height="216" rx="16" fill="#0d0d0f"/><rect x="7" y="9" width="106" height="202" rx="11" fill="#3b4a8a"/><rect x="7" y="110" width="106" height="101" rx="11" fill="#5a3f7e" opacity=".6"/>
+        <g fill="#fff" opacity=".35"><rect x="16" y="28" width="17" height="17" rx="4"/><rect x="41" y="28" width="17" height="17" rx="4"/><rect x="66" y="28" width="17" height="17" rx="4"/><rect x="91" y="28" width="17" height="17" rx="4"/><rect x="16" y="58" width="17" height="17" rx="4"/><rect x="41" y="58" width="17" height="17" rx="4"/><rect x="66" y="58" width="17" height="17" rx="4"/><rect x="91" y="58" width="17" height="17" rx="4"/><rect x="16" y="88" width="17" height="17" rx="4"/><rect x="41" y="88" width="17" height="17" rx="4"/><rect x="16" y="187" width="17" height="17" rx="4"/><rect x="41" y="187" width="17" height="17" rx="4"/><rect x="66" y="187" width="17" height="17" rx="4"/><rect x="91" y="187" width="17" height="17" rx="4"/></g>
+        <rect x="12" y="183" width="96" height="25" rx="9" fill="#fff" opacity=".18"/>
+        <image href="icons/icon-180.png" x="66" y="88" width="17" height="17"/><text x="74.5" y="118" font-size="4.6" text-anchor="middle" fill="#fff">横スクロール</text>
+        <circle cx="74.5" cy="96.5" r="12" fill="none" stroke="#ff3b30" stroke-width="2.5"/>
+      </svg>
+      <p><span class="gn">4</span>ホーム画面に出た <b>アイコン</b> から開いて、横向きにする。回らないときは、コントロールセンターで <b>画面の向きのロック</b> を外す。</p>
+    </div>
+  </div>
+
+  <div class="gsteps g-android">
+    <div class="gstep">
+      <svg viewBox="0 0 120 220" font-family="sans-serif" aria-hidden="true">
+        <rect x="2" y="2" width="116" height="216" rx="16" fill="#0d0d0f"/><rect x="7" y="9" width="106" height="202" rx="11" fill="#9fd8ff"/>
+        <path d="M18 9h84a11 11 0 0 1 11 11v19H7V20A11 11 0 0 1 18 9z" fill="#f1f3f4"/>
+        <rect x="13" y="18" width="80" height="14" rx="7" fill="#fff"/><text x="53" y="27.5" font-size="6" text-anchor="middle" fill="#555">rh-rep.github.io</text>
+        <g fill="#444"><circle cx="104" cy="20.5" r="1.3"/><circle cx="104" cy="25" r="1.3"/><circle cx="104" cy="29.5" r="1.3"/></g>
+        <circle cx="104" cy="25" r="8" fill="none" stroke="#ff3b30" stroke-width="2.5"/>
+        <rect x="7" y="160" width="106" height="51" fill="#8b5a2b"/><rect x="7" y="160" width="106" height="5" fill="#3fa03f"/><rect x="40" y="130" width="12" height="18" fill="#ffd400"/>
+      </svg>
+      <p><span class="gn">1</span>Chrome で開き、右上の <b>⋮</b>（点が縦に3つ）を押す。</p>
+    </div>
+    <div class="gstep">
+      <svg viewBox="0 0 120 220" font-family="sans-serif" aria-hidden="true">
+        <rect x="2" y="2" width="116" height="216" rx="16" fill="#0d0d0f"/><rect x="7" y="9" width="106" height="202" rx="11" fill="#9fd8ff"/>
+        <path d="M18 9h84a11 11 0 0 1 11 11v19H7V20A11 11 0 0 1 18 9z" fill="#f1f3f4"/>
+        <rect x="7" y="160" width="106" height="51" fill="#8b5a2b"/><rect x="7" y="160" width="106" height="5" fill="#3fa03f"/>
+        <rect x="44" y="14" width="68" height="132" rx="5" fill="#fff" stroke="#ccc" stroke-width=".6"/>
+        <g font-size="7" fill="#444" text-anchor="middle"><text x="55" y="27">→</text><text x="69" y="27">☆</text><text x="83" y="27">⤓</text><text x="97" y="27">ⓘ</text></g>
+        <path d="M44 33h68" stroke="#e0e0e0" stroke-width=".6"/>
+        <g font-size="6" fill="#222"><text x="50" y="46">新しいタブ</text><text x="50" y="64">履歴</text><text x="50" y="82">ダウンロード</text><text x="50" y="100" font-weight="bold">ホーム画面に追加</text><text x="50" y="118">共有</text><text x="50" y="136">設定</text></g>
+        <rect x="46" y="90" width="64" height="15" rx="4" fill="none" stroke="#ff3b30" stroke-width="2.5"/>
+      </svg>
+      <p><span class="gn">2</span><b>「ホーム画面に追加」</b> を押す。版によっては <b>「アプリをインストール」</b> という名前です。</p>
+    </div>
+    <div class="gstep">
+      <svg viewBox="0 0 120 220" font-family="sans-serif" aria-hidden="true">
+        <rect x="2" y="2" width="116" height="216" rx="16" fill="#0d0d0f"/><rect x="7" y="9" width="106" height="202" rx="11" fill="#9fd8ff"/><rect x="7" y="9" width="106" height="202" rx="11" fill="#000" opacity=".4"/>
+        <rect x="14" y="72" width="92" height="74" rx="8" fill="#fff"/>
+        <text x="21" y="88" font-size="7" font-weight="bold" fill="#111">アプリをインストール</text>
+        <image href="icons/icon-192.png" x="21" y="96" width="18" height="18"/><text x="45" y="104" font-size="6.5" fill="#111">横スクロール</text><text x="45" y="112" font-size="5" fill="#777">rh-rep.github.io</text>
+        <text x="58" y="136" font-size="6" text-anchor="end" fill="#1a73e8">キャンセル</text><text x="99" y="136" font-size="6" text-anchor="end" font-weight="bold" fill="#1a73e8">インストール</text>
+        <rect x="64" y="127" width="39" height="13" rx="4" fill="none" stroke="#ff3b30" stroke-width="2.5"/>
+      </svg>
+      <p><span class="gn">3</span><b>「インストール」</b>（または「追加」）を押す。</p>
+    </div>
+    <div class="gstep">
+      <svg viewBox="0 0 120 220" font-family="sans-serif" aria-hidden="true">
+        <rect x="2" y="2" width="116" height="216" rx="16" fill="#0d0d0f"/><rect x="7" y="9" width="106" height="202" rx="11" fill="#2f5d50"/>
+        <g fill="#fff" opacity=".35"><circle cx="24.5" cy="40" r="8.5"/><circle cx="49.5" cy="40" r="8.5"/><circle cx="74.5" cy="40" r="8.5"/><circle cx="99.5" cy="40" r="8.5"/><circle cx="24.5" cy="72" r="8.5"/><circle cx="49.5" cy="72" r="8.5"/><circle cx="99.5" cy="72" r="8.5"/><circle cx="24.5" cy="194" r="8.5"/><circle cx="49.5" cy="194" r="8.5"/><circle cx="74.5" cy="194" r="8.5"/><circle cx="99.5" cy="194" r="8.5"/></g>
+        <rect x="24" y="174" width="72" height="8" rx="4" fill="#fff" opacity=".25"/>
+        <image href="icons/icon-192.png" x="66" y="63.5" width="17" height="17"/><text x="74.5" y="94" font-size="4.6" text-anchor="middle" fill="#fff">横スクロール</text>
+        <circle cx="74.5" cy="72" r="12" fill="none" stroke="#ff3b30" stroke-width="2.5"/>
+      </svg>
+      <p><span class="gn">4</span>ホーム画面の <b>アイコン</b> から開くと、全画面・横向きで始まります。</p>
+    </div>
+  </div>
+
+  <ul class="gnote">
+    <li>画面の絵はイメージです。OS やブラウザの版によって、ボタンの場所や名前が少し違うことがあります。</li>
+    <li>LINE などのアプリの中で開いているときは、iPhone は Safari、Android は Chrome で開き直してから行ってください。</li>
+    <li class="g-ios">iPhone では、ブラウザで遊んだ記録（クリアした面・中間セーブ）は、ホームのアイコンには引き継がれません。</li>
+  </ul>
+</div></div>
 <script>
 'use strict';
 // =====================================================================
@@ -465,6 +608,24 @@ function toggleFullscreen() {
     Promise.resolve(p).then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => {});
   } else (d.exitFullscreen || d.webkitExitFullscreen).call(d);
 }
+// ---- ホーム画面に追加の案内（スマホのブラウザで開いたときだけ。ホームのアイコンから開いたら出さない） ----
+const UA = navigator.userAgent || '';
+const isIOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const mq = q => !!(window.matchMedia && matchMedia(q).matches);
+const installed = !!navigator.standalone || mq('(display-mode: standalone)') || mq('(display-mode: fullscreen)');
+const canFullscreen = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);   // iPhone の Safari には無い
+const showInstall = () => touchUI() && !installed;
+const guide = document.getElementById('guide');
+if (installed) document.body.classList.add('installed');
+let guideOpenedAt = 0;
+function openGuide() { pause(); pointers.clear(); syncTouch(); guide.dataset.tab = isIOS ? 'ios' : 'android'; guide.classList.add('open'); guide.scrollTop = 0; guideOpenedAt = performance.now(); }
+document.addEventListener('click', e => {                // 案内のボタン（data-act）：guide=開く、close=とじる、ios/android=タブ
+  const b = e.target && e.target.closest ? e.target.closest('[data-act]') : null;
+  if (!b) return;
+  const a = b.dataset.act;
+  if (a !== 'guide' && performance.now() - guideOpenedAt < 400) return;   // 開いた指の click が下のボタンに落ちないように
+  if (a === 'guide') openGuide(); else if (a === 'close') guide.classList.toggle('open', false); else guide.dataset.tab = a;
+});
 
 // ---- 画面のボタン（タイトル・ステージ選択・ポーズ・クリア） ----
 const PAUSE_ICON = { x: 716, y: 0, w: 84, h: 48 };
@@ -486,11 +647,13 @@ function screenButtons() {
   }
   if (state === 'paused') {
     const list = [{ id: 'resume', label: '▶ 再開' }, { id: 'retry', label: '↺ やり直し' }, { id: 'select', label: '☰ ステージ選択' }];
-    if (touchUI()) list.push({ id: 'fs', label: '⛶ 全画面' });
+    if (touchUI() && canFullscreen) list.push({ id: 'fs', label: '⛶ 全画面' });
+    else if (showInstall()) list.push({ id: 'install', label: '📲 全画面' });
     if (debug) list.push({ id: 'inv', label: invincible ? '無敵 ON' : '無敵 OFF' });
     return rowButtons(list, 324, list.length > 4 ? 124 : 150);
   }
   if (state === 'clear') return rowButtons(STAGE < 10 ? [{ id: 'next', label: '▶ 次のステージ' }, { id: 'select', label: '☰ ステージ選択' }] : [{ id: 'select', label: '☰ ステージ選択' }], 280, 180);
+  if (state === 'title' && showInstall()) return [{ id: 'install', label: '📲 全画面で遊ぶ方法', x: VW / 2 - 120, y: 328, w: 240, h: 44 }];
   return [];
 }
 let cornerTaps = [];
@@ -518,14 +681,14 @@ function retryStage() { clearResume(STAGE); startStage(STAGE); }
 function handleScreenTap(e) {
   const p = canvasPoint(e);
   if (state === 'title' || state === 'select') { if (handleCornerTap(p)) return true; }
-  if (state === 'title') { goSelect(); return true; }
+  if (state === 'title') { if (screenButtons().some(b => inside(p, b))) openGuide(); else goSelect(); return true; }
   if ((state === 'playing' || state === 'paused') && inside(p, PAUSE_ICON)) { togglePause(); return true; }
   if (state === 'playing') return false;
   const b = screenButtons().find(b => inside(p, b));
   if (!b) return true;
   if (b.n) { selCursor = b.n - 1; if (unlocked(b.n)) chooseStage(b.n); }
   else if (b.id.startsWith('sec')) startStage(STAGE, parseInt(b.id.slice(3), 10));
-  else ({ resume, retry: retryStage, select: goSelect, fs: toggleFullscreen, inv: () => { invincible = !invincible; },
+  else ({ resume, retry: retryStage, select: goSelect, fs: toggleFullscreen, install: openGuide, inv: () => { invincible = !invincible; },
           next: () => startOrResume(STAGE + 1), back: () => { state = 'select'; } })[b.id]();
   return true;
 }
@@ -1430,6 +1593,7 @@ function drawMenu() {
     ctx.font = '18px sans-serif'; ctx.fillText(touchUI() ? '◀ ▶ 移動　⤒ ジャンプ　' : '←→ 移動　Space ジャンプ　', VW / 2, 200);
     ctx.fillText(touchUI() ? '遊んでいる間は右上の ⏸ でポーズ・操作説明' : '遊んでいる間は P / Esc でポーズ・操作説明', VW / 2, 230);
     ctx.font = 'bold 22px sans-serif'; ctx.fillText('タップ / Space でスタート', VW / 2, 300);
+    drawButtons(); ctx.textAlign = 'center';
   } else if (state === 'select') {
     ctx.font = 'bold 26px sans-serif'; ctx.fillText('ステージ選択', VW / 2, 70);
     for (const b of screenButtons()) {
