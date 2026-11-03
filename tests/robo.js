@@ -15,7 +15,7 @@ for (const hold of [99, 6, 3]) {
   const ok = [];
   for (let j = 0; j < 100; j++) {
     reset(A().L + 330);                  // 台の下だと頭がつかえるので、台の無い所で測る
-    boss.n = 0; boss.state = 'laser'; BOSS.robo.update(boss, A()); boss.state = 'pause'; boss.timer = 1e9;
+    boss.n = 0; boss.state = 'charge'; boss.glow = 0; BOSS.robo.update(boss, A()); boss.state = 'pause'; boss.timer = 1e9;
     const hp0 = player.hp; let hk = 0;
     for (let f = 0; f < 130; f++) { if (f === j) { jumpPressed = true; hk = hold; } kb.jump = hk-- > 0; loop(); }
     if (player.hp === hp0) ok.push(j);
@@ -27,7 +27,7 @@ for (const n of [0, 2]) for (const hold of [99, 6]) {
   const ok = [];
   for (let j = 0; j < 140; j++) {
     reset(A().L + 330); boss.phase = 2;
-    boss.n = n; boss.state = 'laser'; BOSS.robo.update(boss, A()); boss.state = 'pause'; boss.timer = 1e9;
+    boss.n = n; boss.state = 'charge'; boss.glow = 0; BOSS.robo.update(boss, A()); boss.state = 'pause'; boss.timer = 1e9;
     const hp0 = player.hp; let hk = 0;
     for (let f = 0; f < 170; f++) { if (f === j) { jumpPressed = true; hk = hold; } kb.jump = hk-- > 0; loop(); }
     if (player.hp === hp0) ok.push(j);
@@ -41,7 +41,7 @@ function laserOnce(n, phase, startOnPlat, act) {   // act(f, beams) は毎フレ
   const p = plats[0];
   reset(startOnPlat ? p.x + 40 : p.x - 40);
   if (startOnPlat) { player.y = p.y - player.h; for (let i = 0; i < 5; i++) loop(); }
-  boss.phase = phase; boss.n = n; boss.state = 'laser'; BOSS.robo.update(boss, A()); boss.state = 'pause'; boss.timer = 1e9;
+  boss.phase = phase; boss.n = n; boss.state = 'charge'; boss.glow = 0; BOSS.robo.update(boss, A()); boss.state = 'pause'; boss.timer = 1e9;
   const hp0 = player.hp;
   for (let f = 0; f < 170; f++) { kb.left = kb.right = kb.jump = false; act && act(f); loop(); }
   kb.left = kb.right = kb.jump = false;
@@ -70,6 +70,25 @@ for (const s of liveSolids.filter(s => s.kind === 'spring')) for (const jump of 
   }
   r['spring@' + Math.round(s.x - A().L) + (jump ? '_hold' : '_nojump')] = res.join(' ');
 }
+// 3) 拳：刺さった拳を踏むと1。乗ったままでいると、腕が戻るときにコアの横まで運ばれ、右へ歩いて開いたコアを踏むと2
+function fistRun(ride) {
+  reset(A().L + 300); boss.state = 'punch'; boss.timer = 0; boss.n = 0; const f = boss.fists[0];
+  let stompAt = -1, coreAt = -1, hp0 = boss.hp, carried = 0;
+  for (let i = 0; i < 60 * 12; i++) {
+    kb.left = kb.right = kb.jump = false;
+    if (f.mode === 'stuck' && player.ground !== f && player.y + player.h <= A().F) { kb.right = player.x + player.w / 2 < f.x + f.w / 2 - 4; kb.left = player.x + player.w / 2 > f.x + f.w / 2 + 4; if (player.ground && Math.abs(player.x + 14 - f.x - 35) < 30) jumpPressed = true; kb.jump = true; }
+    if (ride && f.mode === 'park' && boss.state === 'vent' && player.ground === f) kb.right = true;
+    if (!ride && player.ground === f) kb.left = true;
+    const hp = boss.hp; loop();
+    if (player.ground === f) carried = Math.max(carried, A().F - (player.y + player.h));
+    if (boss.hp < hp) { if (hp - boss.hp === 1 && stompAt < 0) stompAt = i; if (hp - boss.hp === 2) { coreAt = i; break; } }
+    if (!ride && stompAt >= 0) break;
+  }
+  kb.left = kb.right = kb.jump = false;
+  return (ride ? '乗る' : '踏む') + ': 拳を踏んで1=' + (stompAt >= 0 ? (stompAt / 60).toFixed(1) + '秒' : 'なし') + (ride ? ' 運ばれた高さ ' + Math.round(carried) + 'px コアを踏んで2=' + (coreAt >= 0 ? (coreAt / 60).toFixed(1) + '秒' : 'なし') : '') + ' 体力 ' + hp0 + '→' + boss.hp;
+}
+r.fist_stomp = fistRun(false);
+r.fist_ride = fistRun(true);
 r.core = 'x ' + Math.round(boss.x - A().L) + '..' + Math.round(boss.x + boss.w - A().L) + ', top ' + Math.round(A().F - boss.y) + 'px, vent ' + vent + 'f';
 console.log(Object.entries(r).map(([k, v]) => k + ': ' + v).join('\\\\n'));
 \`)`);

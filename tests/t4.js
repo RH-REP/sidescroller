@@ -6,7 +6,8 @@ for (let n=1;n<=10;n++){
   debug=true;invincible=true;loadStage(n);startStage(n,checkpoints.length);
   for(let f=0;f<120;f++){kb.right=true;loop();} kb.right=false;
   const def=BOSS[boss.type]; let hits=0,dz=0,wasDz=false,f=0,dmg2=0;
-  for(;f<60*240 && state==='playing';f++){
+  for(;f<60*240 && (state==='playing'||state==='got');f++){
+    if(reward&&(reward.mode==='fall'||reward.mode==='ground')){player.x=reward.x-14;player.y=reward.y-20;player.vy=0;}   // 倒したら宝を取る
     const B=boss, P=player, dzNow=B.collide&&def.dizzy(B);
     if(dzNow&&!wasDz)dz++; wasDz=dzNow;
     const ready=B.inv===0&&P.kb===0&&B.collide&&B.roar<=0&&B.state!=='dead';

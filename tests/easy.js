@@ -13,6 +13,7 @@ const store = process.env.STORE, data = JSON.parse(fs.readFileSync(store, 'utf8'
 global.localStorage = { getItem: k => (k in data ? data[k] : null), setItem: (k, v) => { data[k] = String(v); fs.writeFileSync(store, JSON.stringify(data)); } };
 const src = fs.readFileSync(path.join(__dirname, 'gh.js'), 'utf8').split('eval(')[0];
 eval(src + `eval(require('fs').readFileSync(require('path').join(__dirname,'g.js'),'utf8')+\`
+function clearBoss() { boss.state = 'dead'; boss.deadT = 0; for (let i = 0; i < 900 && state !== 'clear'; i++) { if (reward && (reward.mode === 'fall' || reward.mode === 'ground')) { player.x = reward.x - 14; player.y = reward.y - 20; player.vy = 0; } loop(); } }   // 倒して宝を取るまで
 function measure(label) {
   const r = [label + ' easy=' + !!progress.easy];
   for (const n of [1, 10]) {
@@ -22,7 +23,7 @@ function measure(label) {
     let f = 0; while (!gate.active && f < 600) { kb.right = true; loop(); f++; } kb.right = false; while (kiai > 0) loop();
     r.push('stage' + n + ' HP ' + hp0 + ' heart+' + healed + ' boss ' + player.maxHp);
   }
-  progress.best[1] = 5; startStage(1); attempts = 2; boss.state = 'dead'; clearTimer = 0; loop();
+  progress.best[1] = 5; startStage(1); attempts = 2; clearBoss();
   r.push('clear(attempts=2, best was 5) -> best ' + progress.best[1]);
   return r.join(' | ');
 }

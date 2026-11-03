@@ -6,6 +6,7 @@
 - 最新は `index.html`。古い版と試作は `versions/` にそのまま置いてある（例: https://rh-rep.github.io/sidescroller/versions/game_v3.html ）。
 - 仕様・コードの作り・分かっている問題・テストの走らせ方は [docs/HANDOFF.md](docs/HANDOFF.md)。
 - 面ごとのギミックの単位（ユニット）とデザインの意図は [stages/](stages/) の CSV（`stage01.csv`〜`stage10.csv`）。
+- ボスを倒すと宝（鍵のかけら・剣・王冠）が出て、取るとクリア。設計の資料は [docs/design/](docs/design/)。
 
 ## 操作
 
@@ -33,6 +34,8 @@ node k.js                # ボス部屋での気合いと、やられたあと�
 node save.js             # 中間セーブが再読み込みのあとも残るか
 node route.js            # 全10面をボス部屋まで通れるか（道筋の自動プレイ）
 node units.js            # CSV とコードのユニットの並びが一致するか
+node back.js             # 落ちると戻される道：ダメージなしで上り直せるか
+node reward.js           # ボスを倒したあと宝を取ってクリアできるか
 node robo.js             # ロボアーム戦の避けやすさと届きやすさ
 node gh.js info          # 全10面の地形の概要
 ```

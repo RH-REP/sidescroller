@@ -44,16 +44,20 @@ function run(n, withAlts) {
     const isSpring = tgt.kind === 'spring' || tgt.spring;
     if (on || (isSpring && P.springing)) { if (DEBUG) console.log('reach', idx, unitOf(tgt), JSON.stringify(box(tgt)), 'f=' + f, 'P=' + Math.round(P.x) + ',' + Math.round(feet)); idx++; since = 0; continue; }
     // 前の足場に戻ってしまった（跳び損ねて下の段へ落ちた）→ そこからやり直し、頃合いを変える
-    if (P.ground && !isOn(targets[idx - 1])) for (let j = idx - 2; j >= Math.max(1, idx - 6); j--) {
-      const t = targets[j]; if (t === tgt || t.kind === 'spring') continue;
+    const prev = targets[idx - 1], prevOk = isOn(prev) || (prev.h == null && !prev.period && P.ground === targets[idx - 2]);   // 目印のあとは、その目印のある足場にいればよい
+    if (P.ground && !prevOk) for (let j = idx - 2; j >= Math.max(1, idx - 6); j--) {
+      const t = targets[j]; if (t === tgt || t.kind === 'spring' || (t.h == null && !t.period)) continue;
       if (isOn(t)) { if (DEBUG) console.log('back to', j, unitOf(t), 'f=' + f); idx = j + 1; k++; retries++; break; }
     }
+    // 戻り道の通路（back の下の通路）に落ちた → 左の段からやり直す
+    if (P.ground && P.ground.backTo) { const j = targets.indexOf(P.ground.backTo); if (j >= 0 && j < idx) { idx = j; k++; retries++; falls++; continue; } }
     // 行きたい x
     let aim;
     if (isSpring) aim = b.x + b.w / 2;
     else { const mg = Math.min(34, b.w / 2 - 1); aim = Math.max(b.x + mg, Math.min(b.x + b.w - mg, pc)); }
-    const under = dyUp > 40 && P.x + P.w > b.x - 4 && P.x < b.x + b.w + 4;
-    if (under && P.ground) aim = pc < b.x + b.w / 2 ? b.x - 34 : b.x + b.w + 34;      // 真下にいるなら外へ出てから跳ぶ
+    const minGap = dyUp > 40 ? Math.max(4, Math.min(40, (dyUp - 40) * 0.9)) : 4;   // 高い所へは、上がりきるまでの横の間が要る（近すぎると下から頭を打つ）
+    const under = dyUp > 40 && P.x + P.w > b.x - minGap && P.x < b.x + b.w + minGap;
+    if (under && P.ground) aim = pc < b.x + b.w / 2 ? b.x - 60 : b.x + b.w + 60;      // 真下にいるなら外へ出て、上がりきれる間をとってから跳ぶ
     let dir = Math.abs(aim - pc) > 2 ? Math.sign(aim - pc) : 0;
     const reach = gapH(P, b) <= V.reach, isMover = !!tgt.period;
     // 動く床：届かないうちは今の足場の端（動く床に乗っていれば真ん中）で待つ
@@ -63,7 +67,7 @@ function run(n, withAlts) {
       const canJump = reach && dyUp <= 110 && dyUp >= -60;
       if ((isMover || g0.period) && !sameLevel && !canJump) { aim = waitAt; dir = Math.abs(aim - pc) > 4 ? Math.sign(aim - pc) : 0; }
     }
-    if (P.ground && !on && dir === 0 && dyUp < -12) dir = 1;                         // 真下の足場へは前へ歩いて下りる（寄り道の帰り）
+    if (P.ground && !on && dir === 0 && dyUp < -12) dir = pc - edgeAhead(P, -1) < edgeAhead(P, 1) - pc ? -1 : 1;   // 真下の足場へは、近いほうの本当の端（床が途切れる所）から下りる
     kb.left = dir < 0; kb.right = dir > 0;
     // 跳ぶ
     let jump = false;
@@ -73,11 +77,16 @@ function run(n, withAlts) {
       else if (dir !== 0) {
         const front = dir > 0 ? P.x + P.w : P.x;
         if (!supportAt(front + dir * (V.edge + 2), feet)) {
-          const down = dyUp < -12 && landingBelow(front + dir * 30, feet) && gapH(P, b) < 60;
+          const down = dyUp < -12 && landingBelow(front + dir * 30, feet);          // 目標が下で、すぐ下に足場があれば歩いて下りる
           if (!down) jump = true;
         }
       }
       if (isMover && !(reach && dyUp <= 110 && dyUp >= -60) && !(Math.abs(dyUp) <= 8 && gapH(P, b) < 30)) jump = false;
+    }
+    // 前に低い壁（身を隠す壁など）があれば跳び越える
+    if (P.ground && dir !== 0 && !jump) {
+      const fx = dir > 0 ? P.x + P.w : P.x - 6;
+      if (liveSolids.some(s => s.kind !== 'spring' && s.kind !== 'break' && fx + 6 > s.x && fx < s.x + s.w && s.y < feet - 4 && s.y > feet - 110 && s.y + s.h > P.y)) jump = true;
     }
     if (jump) { jumpPressed = true; holdLeft = V.hold; }
     kb.jump = holdLeft-- > 0 || (P.springing && P.vy < 0) || (isSpring);
@@ -87,7 +96,7 @@ function run(n, withAlts) {
       if (liveSolids.some(s => s.kind === 'break' && hit(ahead, s)) || enemies.some(e => e.alive && hit(ahead, e))) { attackPressed = true; swing = 12; }
     }
     loop();
-    if (DEBUG && f > LIMIT - 200 && f % 10 === 0) console.log('f', f, 'idx', idx, 'P', Math.round(P.x), Math.round(P.y + P.h), 'vy', P.vy.toFixed(1), 'kb', kb.left ? 'L' : kb.right ? 'R' : '-', kb.jump ? 'J' : '', 'ground', P.ground ? Math.round(P.ground.x) + ',' + Math.round(P.ground.y) : '-');
+    if (DEBUG && ((f > LIMIT - 200 && f % 10 === 0) || (process.env.TRACE && f >= +process.env.TRACE && f < +process.env.TRACE + 150 && f % 3 === 0))) console.log('f', f, 'idx', idx, 'P', Math.round(P.x), Math.round(P.y + P.h), 'vy', P.vy.toFixed(1), 'kb', kb.left ? 'L' : kb.right ? 'R' : '-', kb.jump ? 'J' : '', 'ground', P.ground ? Math.round(P.ground.x) + ',' + Math.round(P.ground.y) : '-');
     // 落ちて戻された（瞬間移動）・進まない → 頃合いを変える
     const jumped = Math.abs(P.x - px) > 60 || Math.abs(P.y - py) > 200; px = P.x; py = P.y;
     if (jumped) { falls++; retries++; k++; holdLeft = 0; }

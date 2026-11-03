@@ -26,6 +26,7 @@ for(let n=1;n<=10;n++){ if(ONLY&&n!==ONLY)continue;
       if(P.ground&&(groundAt(ahead)>P.y+P.h+60||wall)){jumpPressed=true;hold=26;}
       if(Math.abs(P.x-lastX)<0.5){ if(++stuck>90){ back=50; stuck=0; } } else stuck=0; lastX=P.x;
       if(f%10==0)attackPressed=true; if(gate.active){ const bx=boss.x+boss.w/2; kb.right=bx>P.x+20; kb.left=bx<P.x-20; if(f%23==0){jumpPressed=true;hold=f%3==0?30:8;} } }
+    if(reward&&(reward.mode==='fall'||reward.mode==='ground')){P.x=reward.x-14;P.y=reward.y-20;P.vy=0;}   // 倒したら宝を取る
     kb.jump=hold-->0;
     loop(); maxX=Math.max(maxX,player.x); if(state==='clear')break;
   }}catch(e){err=e.stack.split('\\n').slice(0,3).join(' | ');}

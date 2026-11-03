@@ -15,6 +15,7 @@ global.localStorage = { getItem: k => (k in data ? data[k] : null), setItem: (k,
 const src = fs.readFileSync(path.join(__dirname, 'gh.js'), 'utf8').split('eval(')[0];
 eval(src + `eval(require('fs').readFileSync(require('path').join(__dirname,'g.js'),'utf8')+\`
 const saved = () => JSON.stringify(progress.resume || null);
+function clearBoss() { boss.state = 'dead'; boss.deadT = 0; for (let i = 0; i < 900 && state !== 'clear'; i++) { if (reward && (reward.mode === 'fall' || reward.mode === 'ground')) { player.x = reward.x - 14; player.y = reward.y - 20; player.vy = 0; } loop(); } }   // 倒して宝を取るまで
 if (STEP === 'reach') {            // 1面を始め、中間1の先へ瞬間移動して通らせる。そこで2回やられる
   invincible = true; chooseStage(1); player.x = checkpoints[1] + 5; loop();
   die(); die(); state = 'playing'; die();
@@ -26,7 +27,7 @@ if (STEP === 'reach') {            // 1面を始め、中間1の先へ瞬間移�
   chooseStage(1); retryStage();
   console.log('retry   cp=' + cp + ' saved=' + saved());
 } else if (STEP === 'clear') {     // クリアで保存が消えるか
-  chooseStage(1); boss.state = 'dead'; clearTimer = 0; loop();
+  chooseStage(1); clearBoss();
   console.log('clear   state=' + state + ' cleared=' + progress.cleared + ' saved=' + saved());
 }
 \`)`);
