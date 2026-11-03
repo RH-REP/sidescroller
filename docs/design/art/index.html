@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>見た目のテーマ比較</title>
+<style>
+  :root { --bg: #ece8df; --ink: #2a2622; --sub: #6a6258; --line: #cfc7b8; --card: #f7f4ed; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #1d1b19; --ink: #ece6da; --sub: #a9a093; --line: #3a3530; --card: #262320; } }
+  :root[data-theme="dark"] { --bg: #1d1b19; --ink: #ece6da; --sub: #a9a093; --line: #3a3530; --card: #262320; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Hiragino Sans", sans-serif; line-height: 1.7; }
+  main { max-width: 900px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 19px; margin: 36px 0 8px; border-top: 1px solid var(--line); padding-top: 20px; }
+  p, li, td, th { font-size: 15px; }
+  .lead { color: var(--sub); }
+  img { display: block; width: 100%; height: auto; border: 1px solid var(--line); background: #fff; }
+  figure { margin: 12px 0; }
+  figcaption { font-size: 13px; color: var(--sub); margin-top: 4px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--card); }
+  .wrap { overflow-x: auto; }
+  code { font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+<h1>見た目のテーマ比較</h1>
+<p class="lead">今の見た目が「AI が作ったよう」に見えるため、方向の違う4つのテーマで同じ2つの場面（1面「草原」・2面「洞窟」）を描いた。どれも画像ファイルを使わず、ゲームと同じ Canvas のコードで描いているので、選んだテーマをそのままゲームへ移せる。描く場面と決まりは <code>README.md</code>。</p>
+
+<h2>今の見た目</h2>
+<figure><img src="png/current_stage1.png" alt="今の1面の見た目。黄色の四角のプレイヤー、半円の緑の丘、水色の空"><figcaption>今の1面。単色の四角、左右対称の半円の丘、明るい単色の空、標準のゴシック体。</figcaption></figure>
+<div class="wrap"><table>
+<tr><th>今の作り</th><th>なぜありきたりに見えるか</th></tr>
+<tr><td>プレイヤー・敵・床が単色の四角</td><td>仮置きの図形に見える</td></tr>
+<tr><td>左右対称の半円の丘と単色の空</td><td>どの面も同じ作りで、場所の空気がない</td></tr>
+<tr><td>影・輪郭・光の向き・質感がない</td><td>手で描いた跡がない</td></tr>
+<tr><td>効果は半透明の円（glow）だけ</td><td>よくある「光らせておけばよい」演出</td></tr>
+<tr><td>標準のゴシック体と絵文字のアイコン</td><td>道具の既定のままに見える</td></tr>
+</table></div>
+
+<h2>A. 切り絵と和紙</h2>
+<figure><img src="png/theme_paper.png" alt="切り絵と和紙のテーマ。染めた和紙を重ねた山と霞、マフラーの人形のプレイヤー、紙の札の画面上の欄、洞窟は紫の紙と輪に切った明かり"><figcaption>縁を揺らして切った染め紙を重ね、薄い影と紙の繊維を付けた。明かりは光る円ではなく、明るい紙を輪に切って重ねる。文字は明朝体。ページ：<code>theme_paper.html</code></figcaption></figure>
+
+<h2>B. 16色ドット絵</h2>
+<figure><img src="png/theme_pixel.png" alt="16色ドット絵のテーマ。ディザの空と雪山、フードのプレイヤー、洞窟はたいまつの明かりを網点の輪で表す"><figcaption>200×100 に1点ずつ置いて4倍にした。自作の16色だけ。空や明かりは決まった順序の網点（ディザ）。画面上の「挑戦」「時間」は小さいと読めないため、剣と砂時計の点の絵にした。ページ：<code>theme_pixel.html</code></figcaption></figure>
+
+<h2>C. 方眼ノートの落書き</h2>
+<figure><img src="png/theme_note.png" alt="方眼ノートの落書きのテーマ。ボールペンと色鉛筆の線、マントの子ども、穴は紙の破れ目、洞窟は鉛筆の塗りと消しゴムの明かり"><figcaption>線はすべて揺れて2度なぞり、色は斜線で付けた。赤は命と危険、緑は「通った」。穴はノートの破れ目。洞窟は鉛筆の塗りを消しゴムでこすって明かりにした。ページ：<code>theme_note.html</code></figcaption></figure>
+
+<h2>D. 2色刷りの版画（リソグラフ）</h2>
+<figure><img src="png/theme_riso.png" alt="2色刷りの版画のテーマ。ティールと蛍光ピンクの網点、版のずれ、洞窟は紺とオレンジ"><figcaption>面ごとに2色の特色インクだけで刷り、重なりで3色目が出る。中間の明るさは網点。片方の版をわざとずらした。ページ：<code>theme_riso.html</code></figcaption></figure>
+
+<h2>比べる</h2>
+<div class="wrap"><table>
+<tr><th>テーマ</th><th>手で作った感じ</th><th>遊ぶときの読みやすさ（足場と背景の区別）</th><th>ゲームへ移す手間</th><th>気になる点</th></tr>
+<tr><td>A. 切り絵と和紙</td><td>強い。和紙の目・紙の影・切った縁がどこにもある</td><td>高い。足場・人物は輪郭と影で背景から浮く</td><td>中。形ごとに揺れた縁を作るので、面を読み込むときに1回作って使い回す</td><td>人物が小さい。明朝体は Android で別の字体になる</td></tr>
+<tr><td>B. 16色ドット絵</td><td>中。よくできているが、ドット絵はよくある選び方</td><td>高い</td><td>大。描き方を全部 200×100 の点の画面に移し、座標を4の倍数にそろえる。日本語の文字（面の名前・操作の説明）を点の字にするか、例外にする</td><td>「レトロ風」という別のありきたりになりうる</td></tr>
+<tr><td>C. 方眼ノートの落書き</td><td>強い。線の揺れと斜線</td><td>草原は高い。洞窟は灰色一色に近く、足場と壁の差が小さい</td><td>中。線を3通り描いておいて切り替える（1フレーム 0.35 ms と測った）</td><td>洞窟の暗い面で読みにくい。丸ゴシックは Apple の端末だけ</td></tr>
+<tr><td>D. 2色刷りの版画</td><td>強い。網点と版のずれ</td><td>洞窟は高い。草原は地面と背景の網点が混ざってうるさい</td><td>中〜大。毎フレーム2枚の版を重ねる（1場面 5.7 ms と測った。スマホでは未測定）</td><td>画面がにぎやかで、動きが多いと目が疲れるかもしれない</td></tr>
+</table></div>
+<p>私のおすすめは <b>A. 切り絵と和紙</b>。手で作った感じが一番強く、足場と背景の区別もはっきりしていて、今の「文字は日本語（面の名前・ボスの名前・操作の説明）」とも合う。次点は C（洞窟の明暗を強くすれば使える）。</p>
+</main>
+</body>
+</html>

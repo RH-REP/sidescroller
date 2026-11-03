@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>切り絵と和紙</title>
+<style>
+  :root { --bg:#dedbd4; --ink:#2b2420; --sub:#5a524b; --line:#c7c2b8; }
+  html, body { margin:0; background:var(--bg); color:var(--ink); }
+  body { width:840px; font-family:"Hiragino Mincho ProN","Yu Mincho",serif; }
+  .wrap { padding:14px 20px 10px; box-sizing:border-box; }
+  h1 { font-size:24px; font-weight:600; margin:0 0 6px; letter-spacing:.12em; }
+  h1 small { font-size:13px; font-weight:400; color:var(--sub); letter-spacing:.05em; margin-left:10px; }
+  p.intent { font-size:13px; line-height:1.65; margin:0 0 10px; }
+  .pal { display:flex; align-items:center; gap:6px; margin:0 0 6px; font-size:12px; }
+  .pal .lab { width:58px; color:var(--sub); }
+  .sw { display:flex; align-items:center; gap:5px; width:100px; }
+  .chip { width:20px; height:20px; border-radius:2px; box-shadow:1px 1.5px 0 rgba(0,0,0,.25); }
+  .sw span { line-height:1.15; }
+  .sw code { font-family:"Menlo",monospace; font-size:10px; color:var(--sub); }
+  .cap { font-size:13px; margin:10px 0 4px; color:var(--sub); }
+  canvas { display:block; width:800px; height:400px; box-shadow:0 1px 0 var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>切り絵と和紙<small>Cut paper on washi</small></h1>
+  <p class="intent">どの形も、色を染めた和紙をはさみで切り、少しずらして重ねた一枚の紙として描いた。縁は種を決めた乱数で手切りのように揺らし、紙の繊維の模様と、重ねた紙の薄い影をつけている。色は面ごとに6色ほどの染め紙に限り、草原は生成り・藍・若草・柿、洞窟は墨紫に黄土と青磁の明かりで空気を分けた。光は光る円ではなく明るい紙を輪に切って重ね、文字は明朝体、ハートやポーズも紙で切った形にしたので、既定の図形・フォント・絵文字の匂いが残らない。</p>
+  <div id="palettes"></div>
+  <div class="cap">場面1　1面「草原」</div>
+  <canvas id="c1" width="800" height="400"></canvas>
+  <div class="cap">場面2　2面「洞窟」</div>
+  <canvas id="c2" width="800" height="400"></canvas>
+</div>
+<script>
+'use strict';
+// ---------- palettes ----------
+const PUP = { paper:'#efe4cc', ai:'#2d4660', kaki:'#d0662f', sumi:'#2b2420' }; // the puppet keeps its colours on every stage
+const S1 = {
+  stage:1, name:'草原',
+  swatches:[['生成り','#efe4cc'],['灰青','#9aa9ae'],['藍','#2d4660'],['若草','#93a552'],['松葉','#4c6a3a'],['柿','#d0662f'],['墨','#2b2420']],
+  paper:'#efe4cc', haze:'#9aa9ae', ai:'#2d4660', grass:'#93a552', pine:'#4c6a3a', kaki:'#d0662f', sumi:'#2b2420',
+  heart:'#d0662f', band:'#2d4660', bandEdge:'#9aa9ae', tag:'#efe4cc', ink:'#2b2420', rim:null
+};
+const S2 = {
+  stage:2, name:'洞窟',
+  swatches:[['墨紫','#1d1925'],['紫紺','#393250'],['鈍','#6d6575'],['黄土','#c99a3f'],['朱','#c4512c'],['青磁','#86b0a0']],
+  dark:'#1d1925', shikon:'#393250', nibi:'#6d6575', odo:'#c99a3f', shu:'#c4512c', seiji:'#86b0a0', paper:'#efe4cc', sumi:'#2b2420',
+  heart:'#c4512c', band:'#2a2438', bandEdge:'#6d6575', tag:'#efe4cc', ink:'#2b2420', rim:'rgba(239,228,204,0.55)'
+};
+
+// ---------- seeded random ----------
+function rng(seed){ return function(){ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+let R = rng(1);
+const rr = (a,b)=>a+(b-a)*R();
+function hex(h){ return [1,3,5].map(i=>parseInt(h.slice(i,i+2),16)); }
+function mix(a,b,t){ const pa=hex(a), pb=hex(b); return '#'+[0,1,2].map(i=>Math.round(pa[i]+(pb[i]-pa[i])*t).toString(16).padStart(2,'0')).join(''); }
+
+// ---------- washi texture: rendered once, reused as a pattern ----------
+let TEX = null;
+function makeWashi(){
+  const S=256, c=document.createElement('canvas'); c.width=c.height=S;
+  const g=c.getContext('2d'), r=rng(4242);
+  const id=g.createImageData(S,S), d=id.data;
+  for(let i=0;i<S*S;i++){ const v=r(), k=i*4;
+    if(v<0.5){ d[k]=70; d[k+1]=50; d[k+2]=30; d[k+3]=r()*16; }
+    else { d[k]=255; d[k+1]=250; d[k+2]=236; d[k+3]=r()*20; } }
+  g.putImageData(id,0,0);
+  const fibre=(light)=>{ const x=r()*S, y=r()*S, a=r()*Math.PI, L=4+r()*15;
+    const x2=x+Math.cos(a)*L, y2=y+Math.sin(a)*L, cx=(x+x2)/2+(r()-.5)*10, cy=(y+y2)/2+(r()-.5)*10;
+    g.lineWidth=0.3+r()*0.6;
+    g.strokeStyle = light ? `rgba(255,252,240,${0.12+r()*0.22})` : `rgba(60,40,25,${0.05+r()*0.08})`;
+    for(const ox of [-S,0,S]) for(const oy of [-S,0,S]){ g.beginPath(); g.moveTo(x+ox,y+oy); g.quadraticCurveTo(cx+ox,cy+oy,x2+ox,y2+oy); g.stroke(); } };
+  for(let i=0;i<320;i++) fibre(true);
+  for(let i=0;i<90;i++) fibre(false);
+  for(let i=0;i<45;i++){ g.fillStyle=`rgba(70,45,25,${0.18+r()*0.25})`; g.beginPath(); g.ellipse(r()*S,r()*S,0.4+r()*1.3,0.3+r()*0.6,r()*3,0,7); g.fill(); }
+  return c;
+}
+
+// ---------- cut-paper geometry ----------
+function jag(pts, amp, step){
+  const out=[];
+  for(let i=0;i<pts.length;i++){
+    const a=pts[i], b=pts[(i+1)%pts.length], dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy)||1;
+    const n=Math.max(1,Math.ceil(L/step)), nx=-dy/L, ny=dx/L;
+    for(let k=0;k<n;k++){ const t=k/n, o=(R()*2-1)*amp*(k===0?0.4:1); out.push([a[0]+dx*t+nx*o, a[1]+dy*t+ny*o]); }
+  }
+  return out;
+}
+function toPath(pts){ const p=new Path2D(); p.moveTo(pts[0][0],pts[0][1]); for(let i=1;i<pts.length;i++) p.lineTo(pts[i][0],pts[i][1]); p.closePath(); return p; }
+function rect(x,y,w,h){ return [[x,y],[x+w,y],[x+w,y+h],[x,y+h]]; }
+function circ(cx,cy,rx,ry=rx,n){ n=n||Math.max(12,Math.round((rx+ry)*1.1)); const p=[]; for(let i=0;i<n;i++){ const a=i/n*Math.PI*2; p.push([cx+Math.cos(a)*rx, cy+Math.sin(a)*ry]); } return p; }
+function arcPts(cx,cy,r,a0,a1,n){ const p=[]; for(let i=0;i<=n;i++){ const a=a0+(a1-a0)*i/n; p.push([cx+Math.cos(a)*r, cy+Math.sin(a)*r]); } return p; }
+function limb(a,b,w){ const dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy)||1, nx=-dy/L*w/2, ny=dx/L*w/2;
+  return [[a[0]+nx,a[1]+ny],[b[0]+nx,b[1]+ny],[b[0]-nx,b[1]-ny],[a[0]-nx,a[1]-ny]]; }
+function heartPts(cx,cy,s){ const k=s/32, p=[]; for(let i=0;i<40;i++){ const t=i/40*Math.PI*2;
+  const x=16*Math.pow(Math.sin(t),3), y=-(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t));
+  p.push([cx+x*k, cy+(y+2.5)*k]); } return p; }
+function bbox(pts){ let a=1e9,b=1e9,c=-1e9,d=-1e9; for(const q of pts){ if(q[0]<a)a=q[0]; if(q[1]<b)b=q[1]; if(q[0]>c)c=q[0]; if(q[1]>d)d=q[1]; } return [a,b,c,d]; }
+
+// One piece of dyed paper: jittered edge, soft offset shadow (paper on paper), optional torn fibre rim, washi grain.
+function paper(ctx, pts, color, o={}){
+  const amp=o.amp??0.8, step=o.step??6;
+  const P = amp>0 ? jag(pts,amp,step) : pts, path=toPath(P);
+  ctx.save();
+  ctx.globalAlpha = o.alpha??1;
+  if(o.shadow!==false){ ctx.shadowColor=o.sc||'rgba(30,18,8,0.34)'; ctx.shadowOffsetX=o.sx??1.6; ctx.shadowOffsetY=o.sy??2.4; ctx.shadowBlur=o.blur??3; }
+  if(o.torn){ ctx.strokeStyle=o.torn; ctx.lineWidth=o.tornW||2.6; ctx.lineJoin='round'; ctx.stroke(path); ctx.shadowColor='transparent'; }
+  ctx.fillStyle=color; ctx.fill(path);
+  ctx.shadowColor='transparent';
+  const tex=o.tex??0.6;
+  if(tex>0){ const b=bbox(P); ctx.clip(path); ctx.globalAlpha=(o.alpha??1)*tex; ctx.fillStyle=TEX; ctx.fillRect(b[0]-1,b[1]-1,b[2]-b[0]+2,b[3]-b[1]+2); }
+  ctx.restore();
+  return path;
+}
+// A thin cut line (kirie incision): drawn as a narrow paper strip.
+function cutLine(ctx, pts, color, w){ ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=w; ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]); for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0]+rr(-.3,.3),pts[i][1]+rr(-.3,.3)); ctx.stroke(); ctx.restore(); }
+function ridge(pk, rough, lv){ let p=pk; for(let l=0;l<lv;l++){ const q=[]; for(let i=0;i<p.length-1;i++){ const a=p[i], b=p[i+1]; q.push(a, [(a[0]+b[0])/2+rr(-4,4), (a[1]+b[1])/2+rr(-rough,rough)]); } q.push(p[p.length-1]); p=q; rough*=0.55; } return p; }
+function hillY(x, base, terms){ let y=base; for(const [a,f,ph] of terms) y-=a*Math.sin(x/f+ph); return y; }
+
+// ---------- drawSky ----------
+function drawSky(ctx, P){
+  if(P.stage===1){
+    paper(ctx, rect(0,0,800,400), P.paper, {amp:0, shadow:false, tex:0.9});
+    const up=[[-5,-5],[805,-5]];
+    for(let x=805;x>=-5;x-=16) up.push([x, 150+10*Math.sin(x/90+1)+6*Math.sin(x/37)]);
+    paper(ctx, up, mix(P.paper,P.haze,0.32), {amp:1.4, step:5, torn:'#f8f1e2', tornW:3.2, sy:2, blur:4, tex:0.9});
+    // sun: a dyed disc with a cut ring inside, no glow
+    paper(ctx, circ(640,104,34), P.kaki, {amp:1.1, step:5, blur:4});
+    const ring = new Path2D(); ring.arc(640,104,27,0,7); ring.arc(640,104,25.3,0,7,true);
+    ctx.save(); ctx.fillStyle=mix(P.kaki,P.paper,0.55); ctx.fill(ring,'evenodd'); ctx.restore();
+    // a few birds
+    for(const [x,y,s] of [[548,82,1],[566,96,0.8],[530,100,0.7]]){
+      paper(ctx, [[x,y],[x+5*s,y-3.2*s],[x+7*s,y-0.6*s],[x+9*s,y-3.2*s],[x+14*s,y],[x+7*s,y+1.4*s]], P.sumi, {amp:0.2, step:3, sx:1, sy:1.2, blur:1.5, tex:0});
+    }
+  } else {
+    paper(ctx, rect(0,0,800,400), P.dark, {amp:0, shadow:false, tex:0.35});
+    // strata of the back wall
+    for(const [y0,sl,th] of [[120,-0.05,26],[200,0.04,18],[262,-0.03,30],[330,0.02,22]]){
+      const top=[], bot=[];
+      for(let x=-10;x<=810;x+=40){ top.push([x, y0+sl*x+6*Math.sin(x/70+y0)+rr(-4,4)]); }
+      for(let x=810;x>=-10;x-=40){ bot.push([x, y0+sl*x+th*(0.6+0.4*Math.sin(x/110+y0))+rr(-4,4)]); }
+      paper(ctx, top.concat(bot), mix(P.dark,P.shikon,0.22), {amp:2, step:7, sx:0, sy:2, blur:4, tex:0.3, sc:'rgba(0,0,0,0.35)'});
+    }
+  }
+}
+
+// ---------- drawFar (distant + middle layers) ----------
+function tree(ctx, x, yb, h, P){
+  paper(ctx, rect(x-1.6, yb-h*0.3, 3.2, h*0.3+5), P.sumi, {amp:0.3, step:3, sx:1, sy:1.5, blur:2, tex:0});
+  for(let i=0;i<3;i++){
+    const w=h*(0.22+i*0.12), top=yb-h+i*h*0.22, hh=h*0.36, lean=rr(-2,2);
+    paper(ctx, [[x+lean,top],[x+w,top+hh],[x+w*0.35,top+hh-2],[x-w*0.3,top+hh+1],[x-w,top+hh-1]], P.pine, {amp:0.7, step:4, sx:1.2, sy:1.8, blur:2.5});
+  }
+}
+function drawFar(ctx, P){
+  if(P.stage===1){
+    // far mountains: asymmetric ridge, light grey-blue paper
+    const pk=ridge([[-10,232],[70,198],[140,168],[205,206],[262,186],[335,148],[372,166],[430,212],[520,184],[600,158],[652,176],[705,208],[765,178],[810,196]], 12, 2);
+    paper(ctx, pk.concat([[810,400],[-10,400]]), P.haze, {amp:0.9, step:5, blur:4, tex:0.8});
+    // nearer ridge in mixed tone
+    const pk2=ridge([[-10,250],[110,228],[180,238],[300,212],[390,236],[470,222],[560,246],[690,226],[810,240]], 8, 2);
+    paper(ctx, pk2.concat([[810,400],[-10,400]]), mix(P.haze,P.ai,0.35), {amp:0.9, step:5, blur:4, tex:0.8});
+    // kasumi (mist bands) laid across the mountains
+    for(const [x,y,w,h] of [[30,180,250,15],[470,166,300,13],[290,222,210,12],[640,236,170,11]]){
+      paper(ctx, [[x,y+h*0.5],[x+h*0.7,y],[x+w-h*0.5,y],[x+w,y+h*0.45],[x+w-h*0.6,y+h],[x+h*0.4,y+h]], P.paper, {amp:0.9, step:6, sy:2, blur:3, tex:0.9});
+    }
+    // middle hills: sum of sines => no symmetric half circles
+    const T=[[18,140,0.7],[9,61,2.1],[4,23,0.3]], hp=[[-10,400]];
+    for(let x=-10;x<=810;x+=10) hp.push([x, hillY(x,286,T)]);
+    hp.push([810,400]);
+    paper(ctx, hp, P.grass, {amp:0.8, step:5, blur:4, tex:0.8});
+    for(const [x,h] of [[62,34],[86,26],[214,30],[392,36],[416,26],[742,33],[766,24]]) tree(ctx, x, hillY(x,286,T)+3, h, P);
+  } else {
+    // cut-paper halo rings of torch light: lighter paper layered on the wall
+    const halo=(cx,cy,radii,col)=>{ radii.forEach((r,i)=>{ paper(ctx, circ(cx+rr(-5,5),cy+rr(-4,4),r,r*rr(0.86,0.95),Math.round(r*0.8)), mix(P.dark,col,0.12+i*0.13), {amp:2.2, step:7, sx:0, sy:1.5, blur:5, sc:'rgba(0,0,0,0.45)', tex:0.3}); }); };
+    halo(150,214,[122,90,62,38],P.odo);
+    halo(738,326,[96,66,42],P.seiji);
+    // rock pillars in front of the light: silhouettes give depth
+    for(const [x,w,top] of [[42,40,80],[268,28,80],[476,48,80],[604,22,80]]){
+      const pts=[[x-w*0.35,top],[x+w*0.4,top],[x+w*0.55,top+70],[x+w*0.3,top+150],[x+w*0.6,400],[x-w*0.6,400],[x-w*0.4,top+160],[x-w*0.55,top+60]];
+      paper(ctx, pts, mix(P.dark,P.shikon,0.6), {amp:2.2, step:8, blur:5, sc:'rgba(0,0,0,0.5)', tex:0.3});
+    }
+    // torch on the wall
+    paper(ctx, limb([150,256],[150,226],5), mix(P.odo,P.dark,0.55), {amp:0.4, step:4, sx:1.5, sy:2, blur:2});
+    paper(ctx, [[142,226],[158,226],[155,232],[145,232]], P.nibi, {amp:0.4, step:4, sx:1.5, sy:2, blur:2});
+    const flame=(cx,by,w,h,col)=>paper(ctx, [[cx+1,by-h],[cx+w*0.28,by-h*0.62],[cx+w*0.5,by-h*0.24],[cx+w*0.34,by],[cx-w*0.36,by],[cx-w*0.5,by-h*0.32],[cx-w*0.12,by-h*0.7]], col, {amp:0.6, step:4, sx:1, sy:1.5, blur:2.5});
+    flame(150,227,16,30,P.shu); flame(150,227,9,19,P.odo); flame(150.5,227,4,9,P.paper);
+    drawCeiling(ctx, P);
+  }
+}
+// ceiling of the cave (y 32..90): rock slab with stalactites
+function drawCeiling(ctx, P){
+  // back row, darker and shorter
+  for(let x=20;x<800;x+=rr(38,60)){ const w=rr(10,16), L=rr(14,22); paper(ctx, [[x-w,48],[x+w,48],[x+rr(-2,2),48+L]], mix(P.dark,P.shikon,0.7), {amp:0.8, step:4, blur:3, tex:0.4}); }
+  const base=[[-5,30],[805,30]];
+  for(let x=805;x>=-5;x-=14) base.push([x, 54+rr(-6,6)]);
+  paper(ctx, base, P.shikon, {amp:1.6, step:5, torn:mix(P.shikon,P.nibi,0.6), tornW:2.4, sy:3, blur:5, sc:'rgba(0,0,0,0.55)', tex:0.6});
+  // front stalactites, lit on the left face (torch side)
+  for(const [x,w,L] of [[64,13,30],[118,9,20],[205,15,34],[296,10,24],[352,12,30],[430,8,18],[512,14,33],[590,10,22],[668,13,31],[742,9,24],[786,11,20]]){
+    const tip=[x+rr(-1.5,1.5), Math.min(89, 54+L)];
+    paper(ctx, [[x-w,52],[x+w,52],tip], P.shikon, {amp:0.9, step:4, sy:2.5, blur:3.5, sc:'rgba(0,0,0,0.5)', tex:0.6});
+    paper(ctx, [[x-w+2,54],[x-w*0.25,54],[tip[0]-0.5,tip[1]-4]], mix(P.shikon,P.nibi,0.75), {amp:0.5, step:4, shadow:false, tex:0.5});
+  }
+}
+
+// ---------- drawGround ----------
+function grassTop(ctx, x0, x1, y, P){
+  // back blades (dark green), front strip (light green)
+  const back=[[x0,y+12]]; let x=x0;
+  while(x<x1){ const w=rr(5,9); back.push([x,y+rr(0,1.5)],[Math.min(x1,x+w*0.5+rr(-1,1)), y-rr(2.5,7.5)]); x+=w; }
+  back.push([x1,y+1],[x1,y+12]);
+  paper(ctx, back, P.pine, {amp:0.4, step:4, sy:2, blur:2.5, tex:0.7});
+  const front=[[x0,y+9]]; x=x0;
+  while(x<x1){ const w=rr(4,7); front.push([x,y+3+rr(0,1)],[Math.min(x1,x+w*0.5), y-rr(0,3)]); x+=w; }
+  front.push([x1,y+3],[x1,y+9]);
+  paper(ctx, front, P.grass, {amp:0.4, step:4, sy:2.2, blur:2.5, tex:0.7});
+}
+function drawGround(ctx, P, segs){
+  if(P.stage===1){
+    for(const [x0,x1] of segs){
+      paper(ctx, [[x0,362],[x1,362],[x1,400],[x0,400]], P.sumi, {amp:1.3, step:5, sx:0, sy:-2, blur:4, tex:0.75});
+      for(let i=0;i<Math.round((x1-x0)/45);i++){ const cx=rr(x0+8,x1-8), cy=rr(376,396); paper(ctx, circ(cx,cy,rr(3,6),rr(2,3.5),9), mix(P.haze,P.sumi,0.35), {amp:0.6, step:3, sx:0.8, sy:1, blur:1.5, tex:0.5}); }
+      // strata strip cut from the soil
+      cutLine(ctx, [[x0+6,384],[ (x0+x1)/2, 386+rr(-2,2)],[x1-6,383]], mix(P.sumi,P.haze,0.18), 1.4);
+      grassTop(ctx, x0, x1, 360, P);
+    }
+  } else {
+    for(const [x0,x1] of segs){
+      paper(ctx, [[x0,362],[x1,362],[x1,400],[x0,400]], P.shikon, {amp:1.5, step:5, sx:0, sy:-2, blur:4, sc:'rgba(0,0,0,0.5)', tex:0.6});
+      for(let i=0;i<Math.round((x1-x0)/40);i++){ const cx=rr(x0+8,x1-8), cy=rr(376,396); paper(ctx, circ(cx,cy,rr(3,7),rr(2,4),9), mix(P.shikon,P.nibi,0.4), {amp:0.7, step:3, sx:0.8, sy:1, blur:1.5, tex:0.5}); }
+      // blocky slabs of rock on top
+      const top=[[x0,370]]; let x=x0;
+      while(x<x1){ const w=Math.min(rr(14,26), x1-x), y=360+rr(-2.5,1.5); top.push([x+1,y],[x+w-1,y+rr(-1,1)]); x+=w; }
+      top.push([x1,370]);
+      paper(ctx, top, P.nibi, {amp:0.8, step:5, sy:2.4, blur:3, sc:'rgba(0,0,0,0.5)', tex:0.6});
+    }
+  }
+}
+
+// ---------- drawPlatform ----------
+function drawPlatform(ctx, P, kind, x, y, w, h, crumble){
+  if(kind==='step'){
+    paper(ctx, [[x,y+2],[x+w,y+2],[x+w+1,y+h+6],[x-1,y+h+6]], P.sumi, {amp:1.2, step:5, sx:2, sy:2, blur:4, tex:0.75});
+    paper(ctx, circ(x+38,y+34,5,3.5,9), mix(P.haze,P.sumi,0.35), {amp:0.5, step:3, sx:0.8, sy:1, blur:1.5});
+    paper(ctx, circ(x+102,y+46,4,3,9), mix(P.haze,P.sumi,0.35), {amp:0.5, step:3, sx:0.8, sy:1, blur:1.5});
+    cutLine(ctx, [[x+8,y+24],[x+70,y+27],[x+w-8,y+23]], mix(P.sumi,P.haze,0.18), 1.3);
+    grassTop(ctx, x, x+w, y, P);
+  } else if(kind==='moving'){
+    // sashiko-stitched indigo board; paper strips behind show the motion
+    for(const [dx,dy,l] of [[-16,3,11],[-22,8,15],[-14,11,8]]) paper(ctx, rect(x+dx,y+dy,l,1.8), P.haze, {amp:0.2, step:4, sx:0.8, sy:1, blur:1, tex:0});
+    paper(ctx, rect(x,y,w,h), P.ai, {amp:0.7, step:5, sy:3, blur:4});
+    paper(ctx, rect(x+2,y+1,w-4,2.2), mix(P.ai,P.paper,0.28), {amp:0.3, step:5, shadow:false, tex:0.4});
+    ctx.save(); ctx.strokeStyle=P.paper; ctx.lineWidth=1.2; ctx.lineCap='round';
+    for(let sx=x+6; sx<x+w-6; sx+=6.5){ ctx.beginPath(); ctx.moveTo(sx, y+8+rr(-.3,.3)); ctx.lineTo(sx+3.2, y+8+rr(-.3,.3)); ctx.stroke(); }
+    ctx.restore();
+    paper(ctx, circ(x+4,y+7,2.4), P.kaki, {amp:0.2, step:3, sx:0.6, sy:0.8, blur:1, tex:0});
+    paper(ctx, circ(x+w-4,y+7,2.4), P.kaki, {amp:0.2, step:3, sx:0.6, sy:0.8, blur:1, tex:0});
+  } else if(kind==='tile'){
+    const base=mix(P.odo,P.shikon,0.42+rr(-0.05,0.05)), crack=P.dark;
+    if(!crumble){
+      paper(ctx, rect(x+0.8,y,w-1.6,h), base, {amp:0.6, step:5, sy:2.6, blur:3.5, sc:'rgba(0,0,0,0.55)', tex:0.7});
+      paper(ctx, rect(x+2,y+1,w-4,3), mix(P.odo,P.shikon,0.2), {amp:0.4, step:5, shadow:false, tex:0.5});
+      const cx=x+rr(10,30);
+      cutLine(ctx, [[cx,y+3],[cx+rr(-4,4),y+9],[cx+rr(-3,5),y+h-2]], crack, 1.1);
+      if(R()<0.6) cutLine(ctx, [[x+3,y+rr(10,15)],[cx-2,y+rr(8,13)]], crack, 0.9);
+    } else {
+      // crumbling: torn into fragments that drop and fade
+      const frags=[
+        {p:[[0,0],[14,0],[11,9],[16,20],[0,20]], dx:-1, dy:3, rot:-0.06},
+        {p:[[14,0],[27,0],[24,11],[11,9]], dx:1, dy:8, rot:0.14},
+        {p:[[27,0],[40,0],[40,20],[30,20],[24,11]], dx:2, dy:4, rot:0.07},
+        {p:[[11,9],[24,11],[30,20],[16,20]], dx:-1, dy:13, rot:-0.2},
+      ];
+      ctx.save(); ctx.globalAlpha=0.78;
+      for(const f of frags){
+        let cx=0,cy=0; for(const q of f.p){cx+=q[0];cy+=q[1];} cx/=f.p.length; cy/=f.p.length;
+        const c=Math.cos(f.rot), s=Math.sin(f.rot);
+        const pts=f.p.map(q=>[x+cx+f.dx+(q[0]-cx)*c-(q[1]-cy)*s, y+cy+f.dy+(q[0]-cx)*s+(q[1]-cy)*c]);
+        paper(ctx, pts, base, {amp:0.6, step:3, sy:3, blur:4, sc:'rgba(0,0,0,0.6)', tex:0.7});
+      }
+      for(const [cx,cy,r] of [[x+9,y+30,2.2],[x+22,y+36,1.6],[x+31,y+33,2],[x+16,y+40,1.3]])
+        paper(ctx, [[cx-r,cy],[cx+r*0.6,cy-r],[cx+r,cy+r*0.8]], base, {amp:0.2, step:3, sx:0.8, sy:1, blur:1.5, tex:0});
+      ctx.restore();
+    }
+  }
+}
+
+// ---------- drawPlayer: paper puppet with split pins and a scarf ----------
+function drawPlayer(ctx, x, yFeet, P){
+  ctx.save(); ctx.translate(x, yFeet-40);
+  const o={amp:0.35, step:3, sx:1.1, sy:1.5, blur:1.8, tex:0.55};
+  const ol = P.rim ? {...o, torn:P.rim, tornW:2.2} : o;
+  // scarf tails flying back
+  paper(ctx, [[13,14],[4,11.5],[-5,9],[-12,11.5],[-7,13],[-13,16],[-4,16.5],[5,18],[13,18.5]], PUP.kaki, ol);
+  // back arm and back leg (darker)
+  const back=mix(PUP.sumi,PUP.ai,0.3);
+  paper(ctx, limb([14,18],[9,24],3.4), back, o); paper(ctx, limb([9,24],[5,21],3), back, o);
+  paper(ctx, limb([12,30],[7,35],4), back, ol); paper(ctx, limb([7,35],[1.5,33.5],3.6), back, ol);
+  paper(ctx, [[0,32],[3,31.5],[3.5,36],[-0.5,36]], back, o);
+  // tunic
+  paper(ctx, [[10,15],[20,15],[23,31],[17,33],[7,32]], PUP.ai, ol);
+  paper(ctx, [[8.6,25],[21.4,25],[21.9,27.4],[8.2,27.4]], PUP.paper, {...o, shadow:false});
+  // front leg
+  paper(ctx, limb([15,30],[21,34],4.2), PUP.sumi, ol); paper(ctx, limb([21,34],[23.5,39],3.8), PUP.sumi, ol);
+  paper(ctx, [[21.5,37.6],[28,38.4],[28,40],[21.5,40]], PUP.sumi, o);
+  // neck wrap of the scarf
+  paper(ctx, [[8.5,12.5],[20.5,12.5],[21.5,17],[8,17]], PUP.kaki, o);
+  // head: face, hair cap with topknot, eye, cheek
+  paper(ctx, circ(16,8,7.6,7.6,16), PUP.paper, ol);
+  paper(ctx, arcPts(16,8,8.1,Math.PI*5/6,Math.PI*11/6,12).concat([[17,5.5]]), PUP.sumi, {...o, amp:0.25});
+  paper(ctx, circ(9.5,1.2,2.6,2.6,9), PUP.sumi, o);
+  paper(ctx, rect(10.6,1.6,2.2,1.6), PUP.kaki, {...o, shadow:false, tex:0});
+  ctx.fillStyle=PUP.sumi; ctx.beginPath(); ctx.arc(19.6,8.6,1.15,0,7); ctx.fill();
+  ctx.fillStyle=mix(PUP.kaki,PUP.paper,0.35); ctx.beginPath(); ctx.ellipse(18.6,11.4,1.5,1,0,0,7); ctx.fill();
+  // front arm swinging forward
+  paper(ctx, limb([17,18],[23,22],3.4), PUP.sumi, ol); paper(ctx, limb([23,22],[26,17.5],3), PUP.sumi, ol);
+  // split pins (brass fasteners of the puppet)
+  ctx.fillStyle='#c9a34a';
+  for(const [px,py] of [[17,18],[23,22],[15,30],[21,34]]){ ctx.beginPath(); ctx.arc(px,py,0.95,0,7); ctx.fill(); }
+  ctx.restore();
+}
+
+// ---------- drawEnemy ----------
+function drawEnemy(ctx, kind, x, y, P){
+  const o={amp:0.4, step:3, sx:1.2, sy:1.6, blur:2, tex:0.55};
+  if(kind==='walker'){
+    // a little oni-mask beetle, 30x26, facing left; (x,y)=left/foot
+    ctx.save(); ctx.translate(x, y-26);
+    paper(ctx, [[10,6],[12,0.5],[15,5]], P.kaki, o);
+    paper(ctx, [[19,4],[22,0],[24,6]], P.kaki, o);
+    for(const fx of [9,17,25]) paper(ctx, circ(fx,24,3.2,2,8), P.sumi, o);
+    paper(ctx, circ(17,14,13,10.5,22).map(q=>[q[0],Math.min(q[1],23)]), P.sumi, o);
+    for(const [hx,hy,hr] of [[23,8,1.5],[27,12,1.2],[25,17,1.3]]) paper(ctx, circ(hx,hy,hr,hr,8), mix(P.sumi,P.paper,0.3), {...o, shadow:false, tex:0});
+    paper(ctx, circ(9,14,8,8.3,16), P.paper, o);
+    paper(ctx, [[2,8.6],[11.5,11.2],[11,13],[2,10.6]], P.sumi, {...o, sx:0.6, sy:0.8});
+    ctx.fillStyle=P.sumi; ctx.beginPath(); ctx.arc(6.4,13.8,1.8,0,7); ctx.fill();
+    ctx.fillStyle=P.kaki; ctx.beginPath(); ctx.arc(6.0,13.6,0.8,0,7); ctx.fill();
+    paper(ctx, [[2.5,17.2],[13,17],[11.5,21.2],[4.5,21.4]], P.sumi, {...o, sx:0.5, sy:0.6, blur:1});
+    for(const tx of [4.5,8.3]) paper(ctx, [[tx,17.4],[tx+1.4,19.6],[tx+2.8,17.4]], P.paper, {...o, shadow:false, tex:0, amp:0.1});
+    ctx.restore();
+  } else {
+    // paper bee, 26x22, centre (x,y), facing left
+    ctx.save(); ctx.translate(x-13, y-11);
+    const wing=mix(P.seiji,P.paper,0.45);
+    paper(ctx, circ(14,3,6,4,12).map(q=>{const a=-0.5,c=Math.cos(a),s=Math.sin(a);return [14+(q[0]-14)*c-(q[1]-3)*s, 3+(q[0]-14)*s+(q[1]-3)*c];}), mix(wing,P.dark,0.25), {...o, alpha:0.92});
+    paper(ctx, circ(11,2,6.5,4.4,12).map(q=>{const a=-0.35,c=Math.cos(a),s=Math.sin(a);return [11+(q[0]-11)*c-(q[1]-2)*s, 2+(q[0]-11)*s+(q[1]-2)*c];}), wing, {...o, alpha:0.95});
+    cutLine(ctx, [[7,4],[11,1.5],[15,0]], mix(P.seiji,P.dark,0.3), 0.8);
+    paper(ctx, [[24,12],[26.5,13.5],[23.5,15]], P.dark, o);
+    const body=circ(14.5,13,10,7.2,22);
+    const bp=paper(ctx, body, P.odo, o);
+    ctx.save(); ctx.clip(bp);
+    for(const sx of [13,18.5,23.5]) paper(ctx, rect(sx,4,3,18), P.dark, {amp:0.5, step:3, shadow:false, tex:0.3});
+    ctx.restore();
+    paper(ctx, circ(5.5,12,5.6,5.6,12), P.dark, {...o, torn:P.rim, tornW:1.8});
+    ctx.fillStyle=P.paper; ctx.beginPath(); ctx.arc(3.8,11,1.7,0,7); ctx.fill();
+    ctx.fillStyle=P.shu; ctx.beginPath(); ctx.arc(3.4,11.1,0.8,0,7); ctx.fill();
+    cutLine(ctx, [[5,7],[3.5,3],[1.5,1.5]], P.nibi, 1);
+    cutLine(ctx, [[7,7],[7,2.5],[5.5,0.5]], P.nibi, 1);
+    paper(ctx, limb([10,19],[8,23],1.6), P.dark, {...o, shadow:false});
+    paper(ctx, limb([15,20],[14,23.5],1.6), P.dark, {...o, shadow:false});
+    ctx.restore();
+    // wing-beat marks: cut paper ticks, not glow
+    for(const [ax,ay,bx,by] of [[x+4,y-15,x+7,y-19],[x+9,y-14,x+13,y-17]]) cutLine(ctx, [[ax,ay],[bx,by]], mix(P.seiji,P.dark,0.2), 1.2);
+  }
+}
+
+// ---------- drawHeart ----------
+function drawHeart(ctx, cx, cy, s, col, P, empty){
+  if(empty){
+    paper(ctx, heartPts(cx,cy,s), mix(P.band,'#000000',0.25), {amp:0.3, step:3, shadow:false, tex:0.4});
+    ctx.save(); ctx.setLineDash([2,1.6]); ctx.strokeStyle=mix(P.tag,P.band,0.45); ctx.lineWidth=1;
+    ctx.stroke(toPath(heartPts(cx,cy,s*0.78))); ctx.restore();
+    return;
+  }
+  paper(ctx, heartPts(cx,cy,s), col, {amp:s>20?0.7:0.35, step:s>20?4:3, sx:s>20?2:1.1, sy:s>20?3:1.4, blur:s>20?3.5:1.8});
+  paper(ctx, heartPts(cx-s*0.1,cy-s*0.08,s*0.5), mix(col,'#efe4cc',0.38), {amp:0.25, step:3, sx:0.6, sy:0.8, blur:1, tex:0.4});
+}
+
+// ---------- drawFlag: a nobori banner, dyed green = already passed ----------
+function drawFlag(ctx, P, x, yTop, yBot){
+  paper(ctx, [[x-9,yBot+1],[x-5,yBot-5],[x+5,yBot-6],[x+10,yBot+1]], mix(P.haze,P.sumi,0.25), {amp:0.6, step:3, blur:2.5});
+  const o={amp:0.5, step:4, sx:1.6, sy:2.2, blur:2.5};
+  const bx=x+2, by=yTop+7, bw=26, bh=66, wave=[];
+  for(let i=0;i<=6;i++){ const yy=by+bh*i/6; wave.push([bx+bw+2.2*Math.sin(i*1.3+0.6), yy]); }
+  paper(ctx, [[bx,by]].concat(wave).concat([[bx+bw*0.68,by+bh-3],[bx+bw*0.38,by+bh+1],[bx,by+bh-2]]), P.grass, o);
+  paper(ctx, rect(bx,by,4,bh-2), P.pine, {...o, shadow:false});
+  paper(ctx, rect(x-1.6,yTop-1,3.2,yBot-yTop+1), P.sumi, o);
+  paper(ctx, limb([x,yTop+7],[x+bw+3,yTop+7],2.4), P.sumi, o);
+  for(const yy of [by+16,by+34,by+52]) paper(ctx, rect(x-2.6,yy,6,2.4), P.paper, {...o, sx:0.8, sy:1, blur:1});
+  paper(ctx, circ(x,yTop-2,3.4,3.4,10), P.kaki, o);
+  const mx=bx+bw/2+2, my=by+16;
+  paper(ctx, circ(mx,my,8.4,8.4,16), P.paper, {...o, sx:0.9, sy:1.2, blur:1.5});
+  paper(ctx, [[mx-5,my],[mx-1.5,my+3.6],[mx+5,my-4.4],[mx+5.8,my-2.8],[mx-1.5,my+6.4],[mx-6.4,my+1.4]], P.pine, {amp:0.2, step:3, shadow:false, tex:0.3});
+  ctx.save(); ctx.fillStyle=P.sumi; ctx.font='600 11px "Hiragino Mincho ProN","Yu Mincho",serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('通', mx, by+36); ctx.fillText('過', mx, by+49); ctx.restore();
+}
+
+// ---------- drawHUD: paper tags on a torn strip ----------
+function tag(ctx, x, y, w, h, P){
+  const pts=[[x+7,y],[x+w,y],[x+w,y+h],[x+7,y+h],[x,y+h-6],[x,y+6]];
+  paper(ctx, pts, P.tag, {amp:0.5, step:5, sx:1.6, sy:2.2, blur:2.5, tex:0.8});
+  ctx.save(); ctx.fillStyle=P.band; ctx.beginPath(); ctx.arc(x+6,y+h/2,2.1,0,7); ctx.fill();
+  ctx.strokeStyle=mix(P.tag,P.ink,0.25); ctx.lineWidth=0.8; ctx.beginPath(); ctx.arc(x+6,y+h/2,3.4,0,7); ctx.stroke(); ctx.restore();
+}
+function drawHUD(ctx, P, hp, max, label){
+  const band=[[-6,-6],[806,-6]];
+  for(let x=806;x>=-6;x-=12) band.push([x, 29.5+rr(-1.3,1.3)]);
+  paper(ctx, band, P.band, {amp:1, step:4, torn:P.bandEdge, tornW:2.6, sy:2.4, blur:3.5, tex:0.7});
+  const hw=16+max*22;
+  tag(ctx, 6, 4, hw, 23, P);
+  for(let i=0;i<max;i++) drawHeart(ctx, 6+24+i*22, 15.5, 17, P.heart, P, i>=hp);
+  ctx.save(); ctx.font='600 15px "Hiragino Mincho ProN","Yu Mincho",serif';
+  const tw=ctx.measureText(label).width; ctx.restore();
+  const tx=6+hw+10; tag(ctx, tx, 4, tw+26, 23, P);
+  ctx.save(); ctx.fillStyle=P.ink; ctx.font='600 15px "Hiragino Mincho ProN","Yu Mincho",serif'; ctx.textBaseline='middle';
+  ctx.fillText(label, tx+16, 16.5); ctx.restore();
+  // pause button: tag with two cut bars and a label, x 722..796
+  tag(ctx, 722, 4, 74, 23, P);
+  paper(ctx, rect(735,9.5,3.6,12), P.ink, {amp:0.25, step:3, sx:0.7, sy:0.9, blur:1, tex:0});
+  paper(ctx, rect(741.5,9.5,3.6,12), P.ink, {amp:0.25, step:3, sx:0.7, sy:0.9, blur:1, tex:0});
+  ctx.save(); ctx.fillStyle=P.ink; ctx.font='600 14px "Hiragino Mincho ProN","Yu Mincho",serif'; ctx.textBaseline='middle';
+  ctx.fillText('中断', 752, 16.5); ctx.restore();
+}
+
+// ---------- scenes ----------
+function offscreen(){ const c=document.createElement('canvas'); c.width=800; c.height=400; return c; }
+function scene1(ctx){
+  R=rng(101);
+  const P=S1, bg=offscreen(), g=bg.getContext('2d');   // static layers rendered once
+  drawSky(g,P); drawFar(g,P);
+  paper(g, [[322,368],[338,364],[380,372],[420,366],[448,370],[448,400],[322,400]], mix(P.ai,P.sumi,0.4), {amp:1.5, step:5, blur:4, tex:0.6});
+  drawGround(g,P,[[0,330],[440,800]]);
+  drawPlatform(g,P,'step',560,300,140,60);
+  // per-frame layers
+  ctx.drawImage(bg,0,0);
+  drawPlatform(ctx,P,'moving',360,300,90,14);
+  drawFlag(ctx,P,250,260,360);
+  ctx.save(); ctx.fillStyle='rgba(30,20,10,0.16)'; ctx.beginPath(); ctx.ellipse(500,362,9,2.2,0,0,7); ctx.fill(); ctx.restore();
+  drawHeart(ctx,500,300,24,P.heart,P);
+  for(const [sx,sy,s] of [[478,288,3.2],[521,312,2.4]]) paper(ctx, [[sx,sy-s*1.6],[sx+s*0.35,sy-s*0.35],[sx+s*1.6,sy],[sx+s*0.35,sy+s*0.35],[sx,sy+s*1.6],[sx-s*0.35,sy+s*0.35],[sx-s*1.6,sy],[sx-s*0.35,sy-s*0.35]], mix(P.kaki,P.paper,0.4), {amp:0.15, step:3, sx:0.6, sy:0.8, blur:1, tex:0});
+  drawEnemy(ctx,'walker',600,300,P);
+  drawPlayer(ctx,150,360,P);
+  drawHUD(ctx,P,3,3,'1-2　挑戦 1　0:42');
+}
+function scene2(ctx){
+  R=rng(202);
+  const P=S2, bg=offscreen(), g=bg.getContext('2d');
+  drawSky(g,P); drawFar(g,P);
+  paper(g, [[244,384],[300,380],[380,386],[460,381],[540,385],[616,382],[616,400],[244,400]], '#110e16', {amp:1.6, step:6, blur:5, sc:'rgba(0,0,0,0.6)', tex:0.3});
+  drawGround(g,P,[[0,250],[610,800]]);
+  // crystals on the right floor
+  for(const [bx,ang,h,w] of [[724,-0.38,30,8],[738,0.04,46,11],[752,0.36,28,8],[768,0.15,18,6]]){
+    const c=Math.cos(ang), s=Math.sin(ang), T=(u,v)=>[bx+u*c-v*s, 361+u*s+v*c];
+    const pts=[T(-w/2,0),T(-w/2,-h*0.75),T(0,-h),T(w/2,-h*0.75),T(w/2,0)];
+    paper(g, pts, P.seiji, {amp:0.4, step:4, sy:2.5, blur:3, sc:'rgba(0,0,0,0.5)', tex:0.5});
+    paper(g, [T(-w/2+1,-1),T(-w/2+1,-h*0.74),T(0,-h+2),T(0,-1)], mix(P.seiji,P.paper,0.45), {amp:0.3, step:4, shadow:false, tex:0.4});
+  }
+  for(let i=0;i<9;i++) if(i!==4) drawPlatform(g,P,'tile',250+i*40,360,40,20);
+  ctx.drawImage(bg,0,0);
+  drawPlatform(ctx,P,'tile',410,360,40,20,true);
+  drawPlayer(ctx,300,360,P);
+  drawEnemy(ctx,'bee',520,230,P);
+  drawHUD(ctx,P,3,4,'2-4　挑戦 3　1:15');
+}
+
+// ---------- page ----------
+function palettes(){
+  const host=document.getElementById('palettes');
+  for(const [lab,P] of [['1面 草原',S1],['2面 洞窟',S2]]){
+    const row=document.createElement('div'); row.className='pal';
+    row.innerHTML='<div class="lab">'+lab+'</div>'+P.swatches.map(([n,h])=>'<div class="sw"><div class="chip" style="background:'+h+'"></div><span>'+n+'<br><code>'+h+'</code></span></div>').join('');
+    host.appendChild(row);
+  }
+}
+palettes();
+TEX = document.createElement('canvas').getContext('2d').createPattern(makeWashi(),'repeat');
+function run(){ scene1(document.getElementById('c1').getContext('2d')); scene2(document.getElementById('c2').getContext('2d')); }
+(document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(run);
+</script>
+</body>
+</html>

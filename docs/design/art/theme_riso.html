@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=840">
+<title>2色刷りの版画</title>
+<style>
+  body { margin: 0; background: #dddad4; color: #1d1b18;
+         font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif; }
+  main { width: 800px; margin: 0 auto; padding: 16px 0 20px; }
+  h1 { font-weight: 800; font-size: 24px; margin: 0 0 6px; letter-spacing: .02em; }
+  p.intent { font-size: 12.5px; line-height: 1.7; margin: 0 0 10px; }
+  .sw { display: flex; gap: 20px; margin: 0 0 12px; }
+  .stage { flex: 1; }
+  .stage h2 { font-size: 12px; font-weight: 800; margin: 0 0 4px; }
+  .chips { display: flex; gap: 5px; }
+  .chip { flex: 1; font-size: 10px; line-height: 1.3; }
+  .chip i { display: block; height: 22px; margin-bottom: 3px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.1); }
+  canvas { display: block; width: 800px; height: 400px; margin: 0 0 4px; }
+  .cap { font-size: 11px; margin: 0 0 10px; color: #4f4b45; }
+</style>
+</head>
+<body>
+<main>
+  <h1>2色刷りの版画（リソグラフ）</h1>
+  <p class="intent">クリーム色の紙に、面ごとに決めた2つの特色インクだけで刷った絵にした。中間の明るさはなめらかなグラデーションではなく網点と線の網で作り、2色が重なった所は乗算で3つ目の色（ほぼ黒の濃い色）になる。片方の版をわざと2px・1pxずらし、紙の目・インクのかすれ・むらも入れたので、「どの面も同じ明るさのパステルに半円の丘と光る円」という道具の既定の見た目から離れ、刷った物の手ざわりと、面ごとの色の性格が出る。洞窟の明かりも光る円ではなく、暖色インクの網点を放射状に刷って表した。</p>
+  <div class="sw" id="swatches"></div>
+  <canvas id="c1" width="800" height="400"></canvas>
+  <div class="cap">場面1：1面「草原」 — Teal ＋ Fluorescent Pink。重なりは濃紺。</div>
+  <canvas id="c2" width="800" height="400"></canvas>
+  <div class="cap" id="cap2">場面2：2面「洞窟」 — Federal Blue ＋ Orange。重なりは焦げ茶。</div>
+</main>
+<script>
+'use strict';
+// ------------------------------------------------------------------
+// 共通：版（レイヤー）・紙・網点
+// ------------------------------------------------------------------
+const W = 800, H = 400;
+const PAPER = [242, 236, 220];                 // #F2ECDC
+const INKS = {
+  meadow: { title: '1面 草原', A: { name: 'Teal', hex: '#00838A' }, B: { name: 'Fluorescent Pink', hex: '#FF48B0' } },
+  cave:   { title: '2面 洞窟', A: { name: 'Federal Blue', hex: '#3D5588' }, B: { name: 'Orange', hex: '#FF6C2F' } },
+};
+const REG = { x: 2, y: 1 };                    // B 版の見当ずれ（px）
+const FONT = '"Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif';
+const TAU = Math.PI * 2;
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+function rgbHex(r) { return '#' + r.map(v => Math.round(v).toString(16).padStart(2, '0')).join('').toUpperCase(); }
+function mul(...cs) { return cs.reduce((a, b) => a.map((v, i) => v * b[i] / 255)); }
+function noise1(seed, step) {               // 1次元の値ノイズ（種つき）
+  const r = mulberry32(seed), p = []; for (let i = 0; i < 64; i++) p.push(r());
+  return x => { const f = x / step, i = Math.floor(f), t = f - i, s = (1 - Math.cos(t * Math.PI)) / 2;
+    const a = p[((i % 64) + 64) % 64], b = p[(((i + 1) % 64) + 64) % 64]; return a + (b - a) * s; };
+}
+
+// 網点の柄（タイル1枚を回転させた pattern）
+function dotPat(color, cell, cov, angle) {
+  const t = mk(cell, cell), x = t.getContext('2d'); x.fillStyle = color;
+  x.beginPath(); x.arc(cell / 2, cell / 2, cell * 0.72 * Math.sqrt(cov), 0, TAU); x.fill();
+  const p = x.createPattern(t, 'repeat'); p.setTransform(new DOMMatrix().rotateSelf(angle)); return p;
+}
+function linePat(color, cell, cov, angle) {
+  const t = mk(cell, cell), x = t.getContext('2d'); x.fillStyle = color;
+  const th = cell * cov; x.fillRect(0, (cell - th) / 2, cell, th);
+  const p = x.createPattern(t, 'repeat'); p.setTransform(new DOMMatrix().rotateSelf(angle)); return p;
+}
+// 位置で濃さが変わる網点（空のグラデーション・明かり）を最初に1回だけ描く
+function screenField(w, h, color, cell, angle, cov) {
+  const c = mk(w, h), x = c.getContext('2d'); x.fillStyle = color;
+  const a = angle * Math.PI / 180, ux = Math.cos(a) * cell, uy = Math.sin(a) * cell, vx = -uy, vy = ux;
+  const R = Math.ceil(Math.hypot(w, h) / cell / 2) + 2;
+  x.beginPath();
+  for (let i = -R; i <= R; i++) for (let j = -R; j <= R; j++) {
+    const px = w / 2 + i * ux + j * vx, py = h / 2 + i * uy + j * vy;
+    if (px < -cell || py < -cell || px > w + cell || py > h + cell) continue;
+    const k = cov(px, py); if (k <= 0.02) continue;
+    const r = cell * 0.72 * Math.sqrt(Math.min(k, 1));
+    x.moveTo(px + r, py); x.arc(px, py, r, 0, TAU);
+  }
+  x.fill(); return c;
+}
+
+// 紙（地の色・紙の目・繊維）
+function makePaper(seed) {
+  const c = mk(W, H), x = c.getContext('2d'), r = mulberry32(seed);
+  const img = x.createImageData(W, H), d = img.data;
+  for (let i = 0; i < W * H; i++) {
+    const n = (r() + r() + r() - 1.5) * 9;
+    d[i * 4] = PAPER[0] + n; d[i * 4 + 1] = PAPER[1] + n; d[i * 4 + 2] = PAPER[2] + n * 1.1; d[i * 4 + 3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  x.strokeStyle = 'rgba(120,100,70,0.10)'; x.lineWidth = 0.7;
+  for (let i = 0; i < 140; i++) {           // 繊維
+    const sx = r() * W, sy = r() * H, a = r() * TAU, l = 4 + r() * 12;
+    x.beginPath(); x.moveTo(sx, sy); x.quadraticCurveTo(sx + Math.cos(a) * l * .6 + r() * 3, sy + Math.sin(a) * l * .6, sx + Math.cos(a) * l, sy + Math.sin(a) * l); x.stroke();
+  }
+  x.fillStyle = 'rgba(90,70,40,0.18)';
+  for (let i = 0; i < 260; i++) x.fillRect(r() * W, r() * H, 1, 1);
+  return c;
+}
+// インクのかすれ（白い点）とむら（大きな濃淡）。destination-out で版から抜く
+function makeSpeckle(seed, n) {
+  const c = mk(W, H), x = c.getContext('2d'), r = mulberry32(seed); x.fillStyle = '#000';
+  for (let i = 0; i < n; i++) { const s = r() < 0.93 ? 1 : 2; x.fillRect(Math.floor(r() * W), Math.floor(r() * H), s, r() < .5 ? 1 : s); }
+  return c;
+}
+function makeMottle(seed) {
+  const s = mk(40, 20), sx = s.getContext('2d'), r = mulberry32(seed);
+  for (let y = 0; y < 20; y++) for (let x = 0; x < 40; x++) { sx.fillStyle = `rgba(0,0,0,${(r() * 0.16).toFixed(3)})`; sx.fillRect(x, y, 1, 1); }
+  const c = mk(W, H), x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(s, 0, 0, W, H); return c;
+}
+
+const PAPER_C = makePaper(11);
+const SPECK_A = makeSpeckle(21, 700), SPECK_B = makeSpeckle(22, 1300);
+const MOTTLE_A = makeMottle(31), MOTTLE_B = makeMottle(32);
+const LAYER_A = mk(W, H), LAYER_B = mk(W, H);
+const LA = LAYER_A.getContext('2d'), LB = LAYER_B.getContext('2d');
+
+function makeStage(key) {
+  const ink = INKS[key], A = ink.A.hex, B = ink.B.hex;
+  const S = { key, A, B,
+    pA: { d30: dotPat(A, 6, .30, 45), d45: dotPat(A, 6, .45, 45), d65: dotPat(A, 6, .65, 45),
+          l35: linePat(A, 5, .35, 45), l55: linePat(A, 5, .55, 45) },
+    pB: { d18: dotPat(B, 5, .18, 15), d35: dotPat(B, 5, .35, 15), d60: dotPat(B, 5, .6, 15),
+          l35: linePat(B, 5, .35, -30), l50: linePat(B, 5, .5, -30) },
+  };
+  if (key === 'meadow') {
+    // 空：上は紙のまま、地平に向かってピンクの網点が太る
+    S.skyB = screenField(W, H, B, 6, 15, (x, y) => { const t = (y - 70) / 260; return t <= 0 ? 0 : Math.pow(Math.min(t, 1), 1.35) * 0.62; });
+    S.nFar = [noise1(101, 150), noise1(102, 41)];
+    S.nMid = [noise1(201, 190), noise1(202, 53)];
+    S.tuft = mulberry32(301);
+  } else {
+    // 明かり：A 版を放射状の網点で抜き（紙が出る）、B 版の網点を放射状に刷る。円にならないよう角度でゆらす
+    const light = (R, sq, cell, ang, k0, pw, seed) => {
+      const wob = noise1(seed, 0.9);
+      return screenField(R * 2, R * 2, '#000', cell, ang, (x, y) => {
+        const dx = x - R, dy = (y - R) * sq, th = Math.atan2(dy, dx) + Math.PI;
+        const re = R * (0.78 + 0.22 * wob(th));
+        const t = 1 - Math.hypot(dx, dy) / re; return t <= 0 ? 0 : Math.pow(t, pw) * k0;
+      });
+    };
+    const tint = (src, color) => { const c = mk(src.width, src.height), x = c.getContext('2d');
+      x.drawImage(src, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = color; x.fillRect(0, 0, c.width, c.height); return c; };
+    S.torchR = 175; S.crysR = 105;
+    S.torchKnock = light(S.torchR, 1.2, 6, 45, 1.25, 1.5, 401);
+    S.torchInk = tint(light(S.torchR, 1.2, 5, 15, 0.95, 0.9, 402), B);
+    S.crysKnock = light(S.crysR, 1.35, 6, 45, 1.1, 1.6, 403);
+    S.crysInk = tint(light(S.crysR, 1.35, 5, 15, 0.85, 1.0, 404), B);
+    S.nCeil = noise1(501, 70); S.nCol = [noise1(502, 60), noise1(503, 45)]; S.nBack = noise1(504, 120);
+    S.crack = mulberry32(601);
+  }
+  return S;
+}
+
+// 版に描く道具
+function fillWith(c, style, fn) { c.fillStyle = style; c.beginPath(); fn(c); c.fill(); }
+function knock(c, fn) { c.save(); c.globalCompositeOperation = 'destination-out'; c.fillStyle = '#000'; c.beginPath(); fn(c); c.fill(); c.restore(); }
+function knockStroke(c, w, fn) { c.save(); c.globalCompositeOperation = 'destination-out'; c.strokeStyle = '#000'; c.lineWidth = w; c.lineJoin = 'round'; c.lineCap = 'round'; c.beginPath(); fn(c); c.stroke(); c.restore(); }
+function strokeWith(c, style, w, fn) { c.strokeStyle = style; c.lineWidth = w; c.lineJoin = 'round'; c.lineCap = 'round'; c.beginPath(); fn(c); c.stroke(); }
+function poly(c, p) { c.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) c.lineTo(p[i], p[i + 1]); c.closePath(); }
+function rect(x, y, w, h) { return c => c.rect(x, y, w, h); }
+function both(L, fn) { fillWith(L.A, L.S.A, fn); fillWith(L.B, L.S.B, fn); }        // 2版とも刷る＝重なりの濃い色
+function knockBoth(L, fn) { knock(L.A, fn); knock(L.B, fn); }
+function ridge(c, x0, x1, yfn, bottom, step) {
+  c.moveTo(x0, bottom); for (let x = x0; x <= x1; x += step) c.lineTo(x, yfn(x)); c.lineTo(x1, yfn(x1)); c.lineTo(x1, bottom); c.closePath();
+}
+
+// ------------------------------------------------------------------
+// 部品
+// ------------------------------------------------------------------
+function drawSky(L) {
+  const S = L.S;
+  if (S.key === 'meadow') {
+    L.B.drawImage(S.skyB, 0, 0);
+    fillWith(L.B, S.B, c => c.arc(668, 148, 44, 0, TAU));                          // 刷りっぱなしの太陽
+    // 雲は B の網点を抜いた紙の形。下だけ A の線で受ける
+    const cloud = (c, x, y, s) => {
+      const parts = [[0, 2, 12], [15, -8, 17], [31, -2, 13], [44, 5, 8], [-13, 6, 7], [22, 6, 10]];
+      for (const [dx, dy, r] of parts) { c.moveTo(x + dx * s + r * s, y + dy * s); c.arc(x + dx * s, y + dy * s, r * s, 0, TAU); }
+    };
+    for (const [x, y, s] of [[120, 168, 1.15], [392, 140, 0.9], [548, 196, 0.75]]) {
+      knock(L.B, c => cloud(c, x, y, s));
+      L.A.save(); L.A.beginPath(); cloud(L.A, x, y, s); L.A.clip();
+      fillWith(L.A, S.pA.l35, rect(x - 30 * s, y + 2 * s, 90 * s, 12 * s)); L.A.restore();
+    }
+  } else {
+    fillWith(L.A, S.A, rect(0, 32, W, H - 32));                                    // 洞窟の地：青のベタ
+    // 奥の暗がり（B を重ねる＝いちばん濃い色）。外側は網点でぼかす
+    const arch = (c, g) => {                         // ゆがんだ横穴の口（ノイズで縁を崩す）
+      c.moveTo(402 - g, 360);
+      for (let i = 0; i <= 24; i++) { const a = Math.PI + i / 24 * Math.PI, k = 0.9 + 0.16 * S.nBack(i * 37 + 900);
+        c.lineTo(486 + Math.cos(a) * (84 + g) * k + (i > 12 ? 8 : 0), 300 + Math.sin(a) * (170 + g) * (0.9 + 0.1 * S.nBack(i * 53))); }
+      c.lineTo(578 + g, 360); c.closePath(); };
+    fillWith(L.B, S.pB.d35, c => arch(c, 26));
+    fillWith(L.B, S.B, c => arch(c, 0));
+    // 奥の岩棚（B の線の網）
+    fillWith(L.B, S.pB.l35, c => ridge(c, 0, W, x => 296 + 40 * S.nBack(x), H, 12));
+    // 明かり：A を放射状の網点で抜き、B の網点を刷る
+    const lights = [[150, 226, S.torchR, S.torchKnock, S.torchInk], [706, 330, S.crysR, S.crysKnock, S.crysInk]];
+    for (const [x, y, R, kn, ink] of lights) {
+      L.A.save(); L.A.globalCompositeOperation = 'destination-out'; L.A.drawImage(kn, x - R, y - R); L.A.restore();
+      L.B.drawImage(ink, x - R, y - R);
+    }
+  }
+}
+
+function drawFar(L) {
+  const S = L.S;
+  if (S.key === 'meadow') {
+    const [f1, f2] = S.nFar, [m1, m2] = S.nMid;
+    const yFar = x => 252 - 70 * f1(x) - 18 * f2(x);
+    const yMid = x => 318 - 50 * m1(x) - 12 * m2(x);
+    // 遠い丘：A の網点。空（B）はここで抜く
+    knock(L.B, c => ridge(c, 0, W, yFar, H, 10));
+    fillWith(L.A, S.pA.d30, c => ridge(c, 0, W, yFar, H, 10));
+    // 近い丘：A の線 ＋ B の細かい網点の刷り重ね
+    knockBoth(L, c => ridge(c, 0, W, yMid, H, 8));
+    fillWith(L.A, S.pA.l35, c => ridge(c, 0, W, yMid, H, 8));
+    fillWith(L.B, S.pB.d18, c => ridge(c, 0, W, yMid, H, 8));
+    // 糸杉（左右非対称の炎形、A のベタ）
+    const cyp = (c, x, h, w) => { const b = yMid(x) + 6;
+      c.moveTo(x - w * .55, b); c.quadraticCurveTo(x - w * 1.0, b - h * .5, x - w * .1, b - h);
+      c.quadraticCurveTo(x + w * .85, b - h * .45, x + w * .5, b); c.closePath(); };
+    for (const [x, h, w] of [[48, 44, 13], [70, 30, 10], [292, 38, 12], [520, 52, 14], [545, 34, 10], [760, 40, 12]]) {
+      knock(L.B, c => cyp(c, x, h, w)); fillWith(L.A, S.A, c => cyp(c, x, h, w));
+    }
+  } else {
+    // 奥の柱（B の線の網、縁はゆらぐ）
+    const [n1, n2] = S.nCol;
+    const col = (c, xl, xr) => { c.moveTo(xl + 10 * n1(32), 32); for (let y = 32; y <= 360; y += 12) c.lineTo(xl + 12 * n1(y), y);
+      for (let y = 360; y >= 32; y -= 12) c.lineTo(xr + 12 * n2(y), y); c.closePath(); };
+    fillWith(L.B, S.pB.l50, c => col(c, 108, 186));
+    fillWith(L.B, S.pB.l35, c => col(c, 628, 676));
+    drawCeiling(L);
+    // たいまつ
+    both(L, c => poly(c, [146, 252, 154, 252, 152, 290, 148, 290]));
+    both(L, c => poly(c, [139, 243, 161, 243, 156, 253, 144, 253]));
+    knockBoth(L, c => { c.moveTo(141, 243); c.bezierCurveTo(136, 230, 146, 224, 146, 208); c.bezierCurveTo(153, 220, 165, 228, 159, 243); c.closePath(); });
+    fillWith(L.B, S.B, c => { c.moveTo(142, 243); c.bezierCurveTo(137, 230, 146, 224, 146, 210); c.bezierCurveTo(153, 221, 164, 229, 158, 243); c.closePath(); });
+    knockBoth(L, c => { c.moveTo(147, 242); c.quadraticCurveTo(145, 233, 149, 226); c.quadraticCurveTo(156, 234, 153, 242); c.closePath(); });
+    fillWith(L.B, S.B, c => { c.rect(155, 199, 3, 3); c.rect(141, 194, 2, 2); c.rect(150, 186, 2, 2); });
+    // 光る石（地面の上、x 690〜724）
+    const shards = [[688, 360, 693, 335, 700, 329, 704, 360], [698, 360, 706, 318, 714, 325, 713, 360], [710, 360, 718, 339, 726, 344, 723, 360]];
+    for (const s of shards) { knockBoth(L, c => poly(c, s)); fillWith(L.B, S.B, c => poly(c, s)); }
+    knockBoth(L, c => { poly(c, [695, 352, 697, 337, 700, 334, 699, 352]); poly(c, [705, 350, 707, 326, 710, 328, 708, 350]); poly(c, [716, 354, 719, 345, 721, 346, 719, 354]); });
+  }
+}
+
+function drawCeiling(L) {
+  const S = L.S;
+  const tites = [[42, 22, 26], [118, 30, 48], [176, 16, 22], [262, 26, 40], [348, 20, 30], [436, 30, 52], [500, 14, 20], [598, 28, 44], [676, 18, 28], [748, 26, 38]];
+  const shape = (c, dy) => {
+    c.moveTo(0, 32 + dy); c.lineTo(W, 32 + dy);
+    for (let x = W; x >= 0; x -= 10) c.lineTo(x, 58 + 24 * S.nCeil(x) + dy);
+    c.closePath();
+    for (const [x, w, len] of tites) { const b = 60 + 24 * S.nCeil(x);
+      c.moveTo(x - w / 2, b - 6 + dy); c.lineTo(x + w / 2, b - 6 + dy); c.lineTo(x + w * 0.12, b + len * 0.55 + dy); c.lineTo(x - w * 0.08 + 3, b + len + dy); c.closePath(); }
+  };
+  knockBoth(L, c => shape(c, 0));
+  fillWith(L.B, S.B, c => shape(c, 0));
+  fillWith(L.A, S.A, c => shape(c, -3));            // A を上に3pxずらす＝下の縁だけ橙が残る
+  // 岩の筋（紙を細く抜く）
+  knockStroke(L.A, 1.2, c => { for (const [x, y, l] of [[80, 44, 30], [230, 48, 40], [390, 42, 26], [540, 50, 34], [700, 44, 30]]) { c.moveTo(x, y); c.lineTo(x + l, y + 3); } });
+}
+
+function drawGround(L) {
+  const S = L.S;
+  if (S.key === 'meadow') {
+    const block = (x0, x1, top, bottom) => {
+      knockBoth(L, rect(x0, top - 6, x1 - x0, bottom - top + 6));
+      fillWith(L.B, S.B, rect(x0, top + 7, x1 - x0, bottom - top - 7));            // 土：ピンクのベタ
+      fillWith(L.A, S.pA.l55, rect(x0, top + 7, x1 - x0, bottom - top - 7));       //   ＋ A の線＝濃紺の筋
+      // 草：上の面は y=top。ぎざぎざの穂先と、土へ垂れる根元
+      const r = S.tuft;
+      fillWith(L.A, S.A, c => {
+        c.moveTo(x0, top);
+        for (let x = x0; x < x1 - 4; x += 5) { const h = r() < 0.45 ? 2 + r() * 4 : 0; c.lineTo(x + 2.5, top - h); c.lineTo(x + 5, top); }
+        c.lineTo(x1, top); c.lineTo(x1, top + 9);
+        for (let x = x1; x > x0; x -= 7) c.lineTo(x - 3.5, top + 8 + (r() < .35 ? r() * 6 : 0));
+        c.lineTo(x0, top + 9); c.closePath();
+      });
+      knock(L.B, rect(x0, top - 6, x1 - x0, 16));
+      // 小石（紙を抜く）
+      knockBoth(L, c => { for (let x = x0 + 18; x < x1 - 10; x += 37 + Math.floor(r() * 30)) {
+        const y = top + 17 + r() * (bottom - top - 26); c.moveTo(x + 4, y); c.ellipse(x, y, 4 + r() * 2, 2.4, -0.2, 0, TAU); } });
+    };
+    S.tuft = mulberry32(301);                                   // 毎フレーム同じ草になるよう種を戻す
+    block(0, 330, 360, H);
+    block(440, 800, 360, H);
+    block(560, 700, 300, 360);
+    fillWith(L.A, S.pA.d65, rect(688, 309, 12, 51));            // 段の右側の陰
+    // 崖の切り口（2版重ね）
+    both(L, c => { c.rect(327, 366, 3, 34); c.rect(440, 366, 3, 34); });
+    // 穴の底へ向かう暗がり
+    fillWith(L.A, S.pA.d45, rect(330, 360, 110, 40));
+    fillWith(L.A, S.A, rect(330, 378, 110, 22));
+    fillWith(L.B, S.pB.d35, rect(330, 370, 110, 30));
+  } else {
+    const block = (x0, x1) => {
+      knockBoth(L, rect(x0, 356, x1 - x0, 44));
+      both(L, c => { c.moveTo(x0, 360); for (let x = x0; x < x1; x += 10) c.lineTo(x + 5, 360 - (x % 30 === 0 ? 2 : 0)); c.lineTo(x1, 360); c.lineTo(x1, H); c.lineTo(x0, H); c.closePath(); });
+      knock(L.A, rect(x0, 360, x1 - x0, 4));                          // 明かりを受けた縁（橙）
+      const r = S.crack;
+      knock(L.A, c => { for (let x = x0 + 12; x < x1 - 8; x += 22 + Math.floor(r() * 20)) poly(c, [x, 372 + r() * 18, x + 6, 370 + r() * 18, x + 4, 376 + r() * 18]); });
+    };
+    S.crack = mulberry32(601);
+    block(0, 250); block(610, 800);
+    both(L, rect(250, 380, 360, 20));                                   // 崩れる床の下は奈落
+  }
+}
+
+function drawPlatform(L, kind) {
+  const S = L.S;
+  if (kind === 'moving') {
+    const x = 360, y = 300, w = 90, h = 14;
+    knockBoth(L, rect(x - 2, y - 2, w + 4, h + 4));
+    fillWith(L.B, S.B, rect(x, y, w, h));
+    fillWith(L.A, S.A, rect(x, y + h - 4, w, 4));
+    strokeWith(L.A, S.A, 1.2, c => { c.moveTo(x + 10, y + 5); c.lineTo(x + 38, y + 5); c.moveTo(x + 50, y + 7); c.lineTo(x + 80, y + 7); });
+    knockBoth(L, c => { c.moveTo(x + 8, y + 7); c.arc(x + 6, y + 7, 2, 0, TAU); c.moveTo(x + w - 4, y + 7); c.arc(x + w - 6, y + 7, 2, 0, TAU); });
+    // 左右に動くことを示す刷りの山形
+    const chev = c => { c.moveTo(352, 301); c.lineTo(345, 307); c.lineTo(352, 313); c.moveTo(458, 301); c.lineTo(465, 307); c.lineTo(458, 313); };
+    for (const c of [L.A, L.B]) knockStroke(c, 6.5, chev);
+    strokeWith(L.A, S.A, 3, chev); strokeWith(L.B, S.B, 3, chev);
+  } else {
+    const r = mulberry32(701);
+    for (let i = 0; i < 9; i++) {
+      const x = 250 + i * 40, y = 360;
+      if (i === 4) continue;
+      knockBoth(L, rect(x, y, 40, 20));
+      fillWith(L.B, S.B, rect(x + 1, y, 38, 20));
+      fillWith(L.A, S.pA.d45, rect(x + 1, y + 11, 38, 9));
+      fillWith(L.A, S.A, rect(x + 1, y + 17, 38, 3));
+      knock(L.B, rect(x + 1, y, 38, 2));
+      const cx = x + 8 + r() * 22;
+      strokeWith(L.A, S.A, 1.4, c => { c.moveTo(cx, y + 2); c.lineTo(cx + 3, y + 8); c.lineTo(cx - 1, y + 12); c.moveTo(cx + 3, y + 8); c.lineTo(cx + 9, y + 10); });
+    }
+    // x 410〜450：崩れて消えかけの1枚（網点で薄れ、割れて落ちる）
+    const shards = [[[411, 362, 424, 361, 427, 371, 412, 380], 0, 3], [[426, 363, 438, 360, 436, 377, 428, 378], 0.12, 9], [[439, 361, 449, 363, 448, 380, 437, 376], -0.1, 5]];
+    for (const [p, rot, dy] of shards) {
+      const cx = (p[0] + p[4]) / 2, cy = (p[1] + p[5]) / 2;
+      const f = c => { c.save(); c.translate(cx, cy + dy); c.rotate(rot); c.translate(-cx, -cy); poly(c, p); c.restore(); };
+      knockBoth(L, f); fillWith(L.B, S.pB.d60, f); strokeWith(L.B, S.B, 1.4, f);
+    }
+    fillWith(L.B, S.B, c => { c.rect(417, 388, 4, 4); c.rect(433, 393, 3, 3); c.rect(442, 386, 3, 2); c.rect(425, 397, 2, 2); });
+    knockBoth(L, c => { c.rect(414, 352, 3, 1.5); c.rect(431, 348, 2, 1.5); c.rect(444, 353, 3, 1.5); });
+  }
+}
+
+// プレイヤー：28×40、足元 y。右向きに走る、とがったフードとマフラー
+function drawPlayer(L, x, y) {
+  const S = L.S;
+  const hood = c => { c.moveTo(2, 3); c.quadraticCurveTo(9, -1, 17, 0.5); c.bezierCurveTo(24, 1.5, 27.5, 7, 26.5, 13);
+    c.bezierCurveTo(25.5, 18, 21, 20.5, 16, 20); c.lineTo(8, 19); c.quadraticCurveTo(5, 13, 2, 3); c.closePath(); };
+  const cape = c => poly(c, [8, 17, 21, 17, 24, 29, 19, 31, 14, 29.5, 8, 32.5, 1, 30, 5, 24]);
+  const boots = c => { poly(c, [20, 35.5, 26, 35.5, 28, 40, 19.5, 40]); poly(c, [-1, 33.5, 4, 31.5, 6, 35.5, 0.5, 37.5]); };
+  const limbs = c => { c.moveTo(17, 28); c.lineTo(22.5, 32); c.lineTo(23, 36.5); c.moveTo(10, 28); c.lineTo(7, 33.5); c.lineTo(3, 34.5); c.moveTo(18, 21); c.lineTo(23.5, 24.5); c.lineTo(27.5, 22.5); };
+  for (const c of [L.A, L.B]) { c.save(); c.translate(x, y - 40); }
+  // 紙の縁取り（下の絵を抜く）
+  for (const c of [L.A, L.B]) { knockStroke(c, 4, hood); knockStroke(c, 4, cape); knockStroke(c, 4, boots); knockStroke(c, 8.5, limbs); knock(c, hood); knock(c, cape); }
+  fillWith(L.B, S.B, c => { hood(c); cape(c); });
+  for (const [c, col] of [[L.A, S.A], [L.B, S.B]]) { strokeWith(c, col, 4.5, limbs); fillWith(c, col, boots); }
+  knockBoth(L, c => c.ellipse(20.8, 11, 4.6, 5.6, -0.15, 0, TAU));               // 顔は紙
+  both(L, c => c.ellipse(22.4, 10.2, 1.5, 2.4, 0, 0, TAU));                      // 目
+  fillWith(L.B, S.B, c => c.arc(23.2, 14.2, 1.3, 0, TAU));                        // ほお
+  fillWith(L.A, S.A, c => { poly(c, [8, 16.5, 21.5, 16, 22, 19.6, 8.5, 20.2]);
+    c.moveTo(9, 17); c.quadraticCurveTo(1, 13.5, -8, 15); c.lineTo(-5, 18); c.lineTo(-11, 20.5); c.quadraticCurveTo(0, 22, 9, 20); c.closePath(); });
+  for (const c of [L.A, L.B]) c.restore();
+}
+
+// 敵：walker（30×26、左向きの甲虫）と bee（26×22、左向きのハチ）
+function drawEnemy(L, kind, x, y) {
+  const S = L.S;
+  for (const c of [L.A, L.B]) { c.save(); c.translate(x, y); }
+  if (kind === 'walker') {
+    const body = c => { c.moveTo(4, 21); c.bezierCurveTo(3, 8, 12, 0.5, 20, 1.5); c.bezierCurveTo(27, 2.5, 31, 11, 30, 21); c.closePath();
+      c.moveTo(11, 17); c.ellipse(5.5, 16.5, 5.8, 5.6, 0, 0, TAU); };
+    const legs = c => { poly(c, [8, 20, 12, 20, 10, 26, 5, 26]); poly(c, [15, 20, 19, 20, 19, 26, 14, 26]); poly(c, [23, 20, 27, 20, 29, 26, 24, 26]); };
+    for (const c of [L.A, L.B]) { knockStroke(c, 3.5, body); knockStroke(c, 3, legs); }
+    both(L, body); both(L, legs);
+    knock(L.A, c => { c.moveTo(18.6, 8); c.arc(16, 8, 2.6, 0, TAU); c.moveTo(26.2, 10.5); c.arc(23, 10.5, 3.2, 0, TAU); c.moveTo(21, 15.5); c.arc(19, 15.5, 2, 0, TAU); });
+    knock(L.A, rect(9, 18.5, 21, 2));                                            // 甲羅のふち（ピンク）
+    knockBoth(L, c => c.arc(5, 14.5, 3.5, 0, TAU));                                // 目は紙
+    both(L, c => { c.arc(3.8, 15.2, 1.7, 0, TAU); });
+    both(L, c => poly(c, [0.5, 10.5, 9.5, 12.8, 9.5, 14.2, 0.5, 12.6]));          // 怒りまぶた
+  } else {
+    const body = c => c.ellipse(14.5, 14, 10, 7, 0.08, 0, TAU);
+    const wings = c => { c.moveTo(18, 5); c.ellipse(12.5, 5, 5.5, 4.2, -0.35, 0, TAU); c.moveTo(22.5, 4.5); c.ellipse(18.5, 4.5, 4.2, 3.4, 0.4, 0, TAU); };
+    const head = c => c.arc(5.5, 13.5, 5.2, 0, TAU);
+    for (const c of [L.A, L.B]) { knockStroke(c, 3.5, body); knockStroke(c, 3.5, head); knock(c, wings); }
+    knock(L.A, body); fillWith(L.B, S.B, body);
+    L.A.save(); L.A.beginPath(); body(L.A); L.A.clip();
+    fillWith(L.A, S.A, c => { c.rect(12.5, 0, 3.4, 24); c.rect(18.8, 0, 3.2, 24); }); L.A.restore();
+    both(L, head);
+    both(L, c => poly(c, [23.8, 12, 29.5, 15.5, 23.8, 17.5]));                    // 針
+    strokeWith(L.A, S.A, 1.3, c => { c.moveTo(5, 9); c.quadraticCurveTo(3, 4, 0, 3.5); });
+    strokeWith(L.B, S.B, 1.3, c => { c.moveTo(5, 9); c.quadraticCurveTo(3, 4, 0, 3.5); });
+    knockBoth(L, c => c.arc(3.8, 12.2, 2.1, 0, TAU));
+    both(L, c => c.arc(3.2, 12.6, 1.1, 0, TAU));
+    knockStroke(L.A, 1, c => { c.moveTo(10, 5); c.lineTo(15, 3.5); c.moveTo(17, 4.6); c.lineTo(21, 3.6); });  // 翅の筋
+    knockBoth(L, c => { c.rect(30, 9, 7, 1.8); c.rect(32, 14, 9, 1.8); c.rect(30, 19, 6, 1.8); });           // 飛ぶ線
+  }
+  for (const c of [L.A, L.B]) c.restore();
+}
+
+function heartPath(c, cx, cy, s) {
+  c.moveTo(cx, cy + 0.44 * s);
+  c.bezierCurveTo(cx - 0.66 * s, cy + 0.02 * s, cx - 0.52 * s, cy - 0.52 * s, cx - 0.02 * s, cy - 0.2 * s);
+  c.bezierCurveTo(cx + 0.46 * s, cy - 0.56 * s, cx + 0.66 * s, cy - 0.02 * s, cx, cy + 0.44 * s);
+  c.closePath();
+}
+// kind: 'pickup' 浮いている拾うもの / 'full' HUD の満タン / 'empty' HUD の空き
+function drawHeart(L, cx, cy, s, kind) {
+  const S = L.S;
+  if (kind === 'pickup') {
+    fillWith(L.A, S.pA.d45, c => c.ellipse(cx + 1, 357, 13, 3.2, 0, 0, TAU));         // 地面の影
+    for (const c of [L.A, L.B]) { c.save(); c.translate(cx, cy); c.rotate(-0.17); c.translate(-cx, -cy); }
+    for (const c of [L.A, L.B]) knockStroke(c, 4, h => heartPath(h, cx, cy, s));
+    fillWith(L.A, S.A, c => heartPath(c, cx + 3, cy + 3, s));                          // ずらした影（A）
+    knock(L.A, c => heartPath(c, cx, cy, s));
+    fillWith(L.B, S.B, c => heartPath(c, cx, cy, s));
+    knockStroke(L.B, 2.4, c => { c.moveTo(cx - 0.36 * s, cy - 0.04 * s); c.quadraticCurveTo(cx - 0.36 * s, cy - 0.28 * s, cx - 0.16 * s, cy - 0.3 * s); });
+    for (const c of [L.A, L.B]) c.restore();
+    strokeWith(L.B, S.B, 2.6, c => { for (const [a, r0, r1] of [[-2.2, 19, 25], [-1.55, 20, 27], [-0.85, 19, 24], [0.15, 20, 25]]) {
+      c.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); c.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); } });
+  } else if (kind === 'full') {
+    fillWith(L.B, S.B, c => heartPath(c, cx, cy, s));
+    knockStroke(L.B, 1.8, c => { c.moveTo(cx - 0.34 * s, cy - 0.04 * s); c.quadraticCurveTo(cx - 0.34 * s, cy - 0.26 * s, cx - 0.15 * s, cy - 0.28 * s); });
+  } else {
+    fillWith(L.A, S.pA.d30, c => heartPath(c, cx, cy, s));
+    strokeWith(L.A, S.A, 2, c => heartPath(c, cx, cy, s));
+  }
+}
+
+// 中間地点の旗（通過後）：棒 x 250、y 260〜360。A の旗に紙抜きのチェック
+function drawFlag(L) {
+  const S = L.S;
+  knockBoth(L, c => poly(c, [252, 263, 270, 261, 288, 266, 279, 275, 289, 286, 268, 284, 252, 288]));
+  fillWith(L.A, S.A, c => { c.moveTo(252, 263); c.quadraticCurveTo(262, 259, 270, 261.5); c.quadraticCurveTo(279, 264, 287, 265.5);
+    c.lineTo(279, 275.5); c.lineTo(288, 286); c.quadraticCurveTo(278, 285, 268, 284); c.quadraticCurveTo(260, 283, 252, 287.5); c.closePath(); });
+  knockStroke(L.A, 3.4, c => { c.moveTo(259, 274); c.lineTo(264, 279); c.lineTo(273, 268); });
+  knockBoth(L, rect(247, 256, 6, 104));
+  both(L, rect(248.5, 262, 3, 98));
+  both(L, c => c.arc(250, 259, 3.6, 0, TAU));
+  fillWith(L.A, S.pA.d65, c => poly(c, [243, 352, 257, 352, 260, 360, 240, 360]));
+}
+
+function drawHUD(L, hp, maxHp, label, tries, time) {
+  const S = L.S, A = L.A;
+  knockBoth(L, rect(0, 0, W, 32));
+  both(L, rect(0, 29, W, 3));                                                       // 刷りの罫
+  for (let i = 0; i < maxHp; i++) drawHeart(L, 20 + i * 26, 15, 20, i < hp ? 'full' : 'empty');
+  const x0 = 24 + maxHp * 26;
+  fillWith(A, S.A, rect(x0, 5, 46, 21));                                           // 面の番号は白抜き
+  A.save(); A.globalCompositeOperation = 'destination-out'; A.fillStyle = '#000';
+  A.font = `800 16px ${FONT}`; A.textAlign = 'center'; A.textBaseline = 'alphabetic'; A.fillText(label, x0 + 23, 22); A.restore();
+  A.fillStyle = S.A; A.font = `800 17px ${FONT}`; A.textAlign = 'left'; A.textBaseline = 'alphabetic';
+  A.fillText(`挑戦 ${tries}`, x0 + 58, 22);
+  A.fillText(time, x0 + 128, 22);
+  // ポーズ：x 722〜796
+  fillWith(L.B, S.B, rect(725, 7, 74, 21));
+  knock(L.B, rect(722, 4, 74, 21));
+  fillWith(A, S.A, rect(722, 4, 74, 21));
+  knockBoth(L, c => { c.rect(731, 9, 4, 11); c.rect(738, 9, 4, 11); });
+  A.save(); A.globalCompositeOperation = 'destination-out'; A.fillStyle = '#000'; A.font = `800 13px ${FONT}`; A.fillText('ポーズ', 748, 19.5); A.restore();
+}
+
+// ------------------------------------------------------------------
+// 1フレーム：紙 → 版A・版B に描く → かすれ・むら → 乗算で重ねる（B はずらす）
+// ------------------------------------------------------------------
+function render(ctx, S, scene) {
+  LA.clearRect(0, 0, W, H); LB.clearRect(0, 0, W, H);
+  const L = { A: LA, B: LB, S };
+  scene(L);
+  for (const [c, sp, mo] of [[LA, SPECK_A, MOTTLE_A], [LB, SPECK_B, MOTTLE_B]]) {
+    c.globalCompositeOperation = 'destination-out'; c.drawImage(sp, 0, 0); c.drawImage(mo, 0, 0); c.globalCompositeOperation = 'source-over';
+  }
+  ctx.globalCompositeOperation = 'source-over'; ctx.drawImage(PAPER_C, 0, 0);
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.drawImage(LAYER_A, 0, 0);
+  ctx.drawImage(LAYER_B, REG.x, REG.y);
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+const MEADOW = makeStage('meadow'), CAVE = makeStage('cave');
+function scene1(L) {
+  drawSky(L); drawFar(L); drawGround(L);
+  drawFlag(L);
+  drawPlatform(L, 'moving');
+  drawHeart(L, 500, 300, 24, 'pickup');
+  drawEnemy(L, 'walker', 600, 274);
+  drawPlayer(L, 150, 360);
+  drawHUD(L, 3, 3, '1-2', 1, '0:42');
+}
+function scene2(L) {
+  drawSky(L); drawFar(L); drawGround(L);
+  drawPlatform(L, 'crumble');
+  drawEnemy(L, 'bee', 507, 219);
+  drawPlayer(L, 300, 360);
+  drawHUD(L, 3, 4, '2-4', 3, '1:15');
+}
+
+const c1 = document.getElementById('c1').getContext('2d');
+const c2 = document.getElementById('c2').getContext('2d');
+render(c1, MEADOW, scene1);
+render(c2, CAVE, scene2);
+
+// 色見本（インクの色と、紙に刷ったとき・重ねたときの色）
+(function swatches() {
+  const host = document.getElementById('swatches');
+  for (const key of ['meadow', 'cave']) {
+    const ink = INKS[key], a = hexRgb(ink.A.hex), b = hexRgb(ink.B.hex);
+    const items = [['紙', PAPER, rgbHex(PAPER)], [ink.A.name, mul(PAPER, a), ink.A.hex], [ink.B.name, mul(PAPER, b), ink.B.hex], ['重なり A×B', mul(PAPER, a, b), rgbHex(mul(PAPER, a, b))]];
+    const div = document.createElement('div'); div.className = 'stage';
+    div.innerHTML = `<h2>${ink.title}</h2><div class="chips">` + items.map(([n, col, hx]) =>
+      `<div class="chip"><i style="background:${rgbHex(col)}"></i>${n}<br><b>${hx}</b></div>`).join('') + '</div>';
+    host.appendChild(div);
+  }
+})();
+
+// 重さの確認：2場面を30回ずつ描いた平均
+(function bench() {
+  const t0 = performance.now();
+  for (let i = 0; i < 30; i++) { render(c1, MEADOW, scene1); render(c2, CAVE, scene2); }
+  const ms = (performance.now() - t0) / 60;
+  document.getElementById('cap2').textContent += `　1場面の描画 平均 ${ms.toFixed(2)} ms（この端末）`;
+})();
+</script>
+</body>
+</html>

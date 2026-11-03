@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>16色ドット絵</title>
+<style>
+  body { margin: 0; background: #d9d6cf; color: #23201c; font-family: "Hiragino Sans", sans-serif; }
+  main { width: 800px; margin: 0 auto; padding: 6px 20px 16px; }
+  h1 { font-size: 20px; margin: 2px 0 4px; letter-spacing: 0.05em; }
+  p { font-size: 12.5px; line-height: 1.6; margin: 0 0 4px; }
+  .pal { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; margin: 4px 0 6px; }
+  .sw { display: flex; flex-direction: column; align-items: center; gap: 3px; font: 9px/1 monospace; }
+  .sw i { display: block; width: 100%; height: 16px; border: 1px solid #23201c; box-sizing: border-box; }
+  h2 { font-size: 12px; margin: 4px 0 2px; font-weight: 600; }
+  canvas { display: block; width: 800px; height: 400px; image-rendering: pixelated; }
+</style>
+</head>
+<body>
+<main>
+<h1>16色ドット絵</h1>
+<p>200×100 の小さな画面に1マスずつ点を置き、4倍に拡大して描いた。色は自分で決めた16色だけを使い、空の移り変わりやたいまつの明かりは半透明やぼかしではなく、決まった順序の網点（ディザ）で表す。左右対称の半円や単色の四角をやめ、山の尾根・草の垂れ・岩のつららは1点ずつ手で置いた形にしたので、道具の既定のままの絵には見えない。草原は緑と空色、洞窟は紫と橙が主になるように、同じ16色の中で使う色の比率を変えている。</p>
+<p>画面上の欄の数字は 3×5 マスの自作の点の字。「挑戦」「時間」は 7〜8 マスの高さでは漢字がつぶれ、標準のフォントを混ぜると点の格子が崩れるため、剣（挑戦の回数）と砂時計（時間）の点の絵に置き換えた。</p>
+<div class="pal" id="pal"></div>
+<h2>場面1：1面「草原」</h2>
+<canvas id="c1" width="800" height="400"></canvas>
+<h2>場面2：2面「洞窟」</h2>
+<canvas id="c2" width="800" height="400"></canvas>
+</main>
+<script>
+"use strict";
+// ---------- palette (16 colours, index = letter code below) ----------
+const PAL = [
+  "#17111f", // 0 k outline / night
+  "#2e2340", // 1 v deep violet
+  "#4a3a5c", // 2 p dusk purple
+  "#6f5f78", // 3 g rock grey-violet
+  "#2f4a3a", // 4 F forest dark
+  "#4f7a3e", // 5 G grass
+  "#8fb04a", // 6 L leaf light
+  "#6b3f2a", // 7 d dirt dark
+  "#a3653a", // 8 w wood / dirt
+  "#e0a04a", // 9 o amber
+  "#f4e3b0", // 10 c cream
+  "#b8303a", // 11 r red
+  "#3a6fa0", // 12 b blue
+  "#7fb3c8", // 13 s sky light
+  "#c9dfd0", // 14 h haze
+  "#4e9e8c"  // 15 t teal
+];
+const CODE = { k:0, v:1, p:2, g:3, F:4, G:5, L:6, d:7, w:8, o:9, c:10, r:11, b:12, s:13, h:14, t:15 };
+const W = 200, H = 100, S = 4;
+
+// palette as packed RGBA (little endian ABGR)
+const PAL32 = new Uint32Array(PAL.map(h => {
+  const n = parseInt(h.slice(1), 16);
+  return (0xff << 24 | (n & 0xff) << 16 | (n >> 8 & 0xff) << 8 | n >> 16) >>> 0;
+}));
+
+// swatches
+document.getElementById("pal").innerHTML = PAL.map(h => `<div class="sw"><i style="background:${h}"></i>${h}</div>`).join("");
+
+// ---------- helpers on an indexed buffer ----------
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+const bayer = (x, y) => (BAYER[(y & 3) * 4 + (x & 3)] + 0.5) / 16;
+function rng(seed) { // mulberry32
+  return function () {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function hn(x, y) { // integer hash noise in [0,1)
+  let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) | 0;
+  h = Math.imul(h ^ h >>> 13, 1274126177);
+  return ((h ^ h >>> 16) >>> 0) / 4294967296;
+}
+function px(b, x, y, c) { if (x >= 0 && x < W && y >= 0 && y < H) b[y * W + x] = c; }
+function get(b, x, y) { return (x >= 0 && x < W && y >= 0 && y < H) ? b[y * W + x] : 0; }
+function rect(b, x, y, w, h, c) { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) px(b, i, j, c); }
+function dith(b, x, y, c1, c2, f) { px(b, x, y, bayer(x, y) < f ? c2 : c1); } // f = share of c2
+function spr(b, x, y, rows, flip) {
+  for (let j = 0; j < rows.length; j++) {
+    const r = rows[j];
+    for (let i = 0; i < r.length; i++) {
+      const ch = r[flip ? r.length - 1 - i : i];
+      if (ch !== ".") px(b, x + i, y + j, CODE[ch]);
+    }
+  }
+}
+
+// ---------- sprites (hand placed) ----------
+const PLAYER = [ // 10x10, faces right, mid-stride, scarf trailing
+  "...kkkkk..",
+  "..kbbbbbk.",
+  "..kbsbccck",
+  "..kbbcckck",
+  "rrkrrrrrk.",
+  ".rrkbbbbk.",
+  "...kbsbkck",
+  "...kbbbbk.",
+  "..kdkkkdk.",
+  ".kdk...kdk"
+]
+const ENEMY = [ // 8x7 ladybug-like beetle walking left
+  "...kkkk.",
+  "..krrkck",
+  ".krrrkrk",
+  ".kkrrkrk",
+  "kckkrkrk",
+  "kkkkkkkk",
+  ".k..k..k"
+];
+const BEE_A = [ // 8x6, wings up, faces left
+  "...hh.h.",
+  "...hhhh.",
+  ".kkkkkk.",
+  "kcokokok",
+  "kookokkk",
+  ".kkkkk.."
+];
+const BEE_B = [ // wings down
+  "........",
+  "...hhhh.",
+  ".kkhhhh.",
+  "kcokokok",
+  "kookokkk",
+  ".kkkkk.."
+];
+const HEART = [ // 7x7 pickup
+  ".kk.kk.",
+  "krrkrrk",
+  "kcrrrrk",
+  "krrrrrk",
+  ".krrrk.",
+  "..krk..",
+  "...k..."
+];
+const HUD_HEART = [
+  ".kk.kk.",
+  "krrkrrk",
+  "kcrrrrk",
+  ".krrrk.",
+  "..krk..",
+  "...k..."
+];
+const HUD_HEART_EMPTY = [
+  ".kk.kk.",
+  "kppkppk",
+  "kpvvvpk",
+  ".kpvpk.",
+  "..kpk..",
+  "...k..."
+];
+const SWORD = [ // 7x6
+  ".....cc",
+  "....cc.",
+  ".o.cc..",
+  "..oc...",
+  ".d.o...",
+  "d......"
+];
+const HOURGLASS = [
+  "ccccc",
+  ".coc.",
+  "..o..",
+  ".coc.",
+  "ccccc"
+];
+const FONT = {
+  "0": ["###", "#.#", "#.#", "#.#", "###"],
+  "1": [".#.", "##.", ".#.", ".#.", "###"],
+  "2": ["##.", "..#", ".#.", "#..", "###"],
+  "3": ["##.", "..#", ".#.", "..#", "##."],
+  "4": ["#.#", "#.#", "###", "..#", "..#"],
+  "5": ["###", "#..", "##.", "..#", "##."],
+  "6": [".##", "#..", "###", "#.#", "###"],
+  "7": ["###", "..#", ".#.", ".#.", ".#."],
+  "8": ["###", "#.#", "###", "#.#", "###"],
+  "9": ["###", "#.#", "###", "..#", "##."],
+  "-": ["...", "...", "###", "...", "..."],
+  ":": [".", "#", ".", "#", "."]
+};
+function text(b, x, y, s, c, sh) {
+  for (const ch of s) {
+    const g = FONT[ch];
+    if (!g) { x += 2; continue; }
+    for (let j = 0; j < 5; j++) for (let i = 0; i < g[j].length; i++)
+      if (g[j][i] === "#") { if (sh !== undefined) px(b, x + i, y + j + 1, sh); px(b, x + i, y + j, c); }
+    x += g[0].length + 1;
+  }
+  return x;
+}
+
+// ---------- drawing parts ----------
+function drawSky(b, stage) {
+  if (stage === 1) {
+    for (let y = 8; y < H; y++) for (let x = 0; x < W; x++) {
+      if (y < 34) dith(b, x, y, 12, 13, (y - 8) / 26);
+      else dith(b, x, y, 13, 14, Math.min(1, (y - 34) / 30));
+    }
+    const CLOUD1 = [
+      "......hhhh..........",
+      "....hhcchhh..hhh....",
+      "..hhccchhhhhhcchhh..",
+      ".hhhhhhhhhhhhhhhhhh.",
+      "hhhhhhhhhhhhhhhhhhhh",
+      ".ssshhhsssshhssssss."
+    ];
+    const CLOUD2 = [
+      "...hhh.......",
+      ".hhcchhhhh...",
+      "hhhhhhhhhhhh.",
+      ".sshhssshhss."
+    ];
+    spr(b, 22, 16, CLOUD1); spr(b, 120, 12, CLOUD2); spr(b, 158, 24, CLOUD2, true);
+  } else {
+    for (let y = 8; y < H; y++) for (let x = 0; x < W; x++) dith(b, x, y, 1, 0, Math.max(0, (y - 70) / 40));
+  }
+}
+
+function ridge(points, x) {
+  for (let i = 0; i < points.length - 1; i++) {
+    const [x0, y0] = points[i], [x1, y1] = points[i + 1];
+    if (x >= x0 && x <= x1) return Math.round(y0 + (y1 - y0) * (x - x0) / (x1 - x0));
+  }
+  return points[points.length - 1][1];
+}
+
+function drawFar(b, stage) {
+  const R = rng(stage * 101);
+  if (stage === 1) {
+    // far range: uneven peaks, lit from the left (rising slopes get haze highlights)
+    const P = [[0, 52], [14, 44], [22, 47], [44, 31], [58, 42], [66, 39], [84, 50], [108, 36], [118, 40], [134, 28], [152, 44], [171, 38], [184, 46], [200, 41]];
+    for (let x = 0; x < W; x++) {
+      const top = ridge(P, x);
+      let rising = false;
+      for (let i = 0; i < P.length - 1; i++) if (x >= P[i][0] && x < P[i + 1][0]) rising = P[i + 1][1] < P[i][1];
+      // nearest peaks on each side: the face right of a peak is in shadow, cut by a slanted ridge line
+      let L = null, V = null;
+      for (let i = 1; i < P.length - 1; i++) if (P[i][1] < P[i - 1][1] && P[i][1] < P[i + 1][1] && P[i][0] <= x) L = P[i];
+      if (L) for (let i = 1; i < P.length - 1; i++) if (P[i][0] > L[0] && P[i][1] > P[i - 1][1] && P[i][1] > P[i + 1][1]) { V = P[i]; break; }
+      for (let y = top; y < 72; y++) {
+        let c = 13;
+        // shadow face: right of the peak's crease, left of the valley's crease
+        const sh = L && x - L[0] > (y - L[1]) * 0.35 && (!V || x < V[0] + (y - V[1]) * 0.6);
+        if (sh) { const e = x - L[0] - (y - L[1]) * 0.35; c = e > 2 || bayer(x, y) < 0.5 ? 3 : 13; }
+        if (y === top) c = rising ? 14 : 3;
+        else if (rising && y < top + 3) c = 14;
+        if (top < 36 && y < 37 && y < top + 4) c = rising ? 10 : 14; // snow on the tall ones
+        px(b, x, y, c);
+      }
+      for (let y = 58; y < 72; y++) if (bayer(x, y) < (y - 58) / 12) px(b, x, y, 14); // haze at the foot
+    }
+    // mid hills: two irregular teal-green rolls with a tree line
+    for (let x = 0; x < W; x++) {
+      const h = 66 - Math.round(5 * Math.sin(x * 0.045 + 1.2) + 3 * Math.sin(x * 0.11 + 0.4) + 2 * Math.sin(x * 0.27));
+      for (let y = h; y < 92; y++) {
+        let c = 15;
+        if (y < h + 1) c = 6;
+        else if (y > h + 6) c = bayer(x, y) < Math.min(1, (y - h - 6) / 8) ? 4 : 15;
+        px(b, x, y, c);
+      }
+      // tree crowns (rounded bumps, lumpy not regular)
+      if (R() < 0.18) {
+        const tw = 2 + (R() * 3 | 0), th = 2 + (R() * 3 | 0);
+        for (let i = 0; i < tw; i++) for (let j = 0; j < th + (i === 1 ? 1 : 0); j++) px(b, x + i, h - j + 1, j === th - 1 + (i === 1 ? 1 : 0) && i < 2 ? 5 : 4);
+      }
+    }
+    // near bushes behind the ground line
+    for (let x = 0; x < W; x++) {
+      const h = 85 - Math.round(2 * Math.sin(x * 0.21) + 1.5 * Math.sin(x * 0.53 + 2) + (R() < 0.25 ? 1 : 0));
+      for (let y = h; y < 92; y++) px(b, x, y, y === h ? 5 : (y === h + 1 && bayer(x, y) < 0.5 ? 5 : 4));
+    }
+  } else {
+    // back tunnel: a deeper arch in the far wall
+    for (let y = 44; y < 92; y++) for (let x = 122; x < 178; x++) {
+      const dx = (x - 150) / 26, dy = (y - 92) / 46;
+      const d = dx * dx + dy * dy;
+      if (d < 1) px(b, x, y, d < 0.75 ? 0 : (bayer(x, y) < (1 - d) * 4 ? 0 : 1));
+    }
+    // rock strata in the back wall
+    for (let n = 0; n < 70; n++) {
+      const x = R() * W | 0, y = 26 + (R() * 60 | 0), len = 2 + (R() * 6 | 0);
+      if (get(b, x, y) === 0) continue;
+      for (let i = 0; i < len; i++) { px(b, x + i, y, 2); if (get(b, x + i, y + 1) === 1) px(b, x + i, y + 1, 0); }
+    }
+    // columns: left wall pillar (torch holder) and a right stalagmite
+    for (let y = 20; y < 92; y++) {
+      const xl = 17 + Math.round(1.5 * Math.sin(y * 0.23) + 0.8 * Math.sin(y * 0.9));
+      const xr = 40 + Math.round(2 * Math.sin(y * 0.3) + Math.sin(y * 0.71));
+      for (let x = xl; x <= xr; x++) {
+        let c = bayer(x, y) < 0.3 ? 1 : 2;
+        if (x === xl + 1 || (x === xl + 2 && bayer(x, y) < 0.5)) c = 3;
+        if (x === xl || x === xr) c = 0;
+        px(b, x, y, c);
+      }
+      if (y % 9 === 3) for (let x = xl + 3; x < xr - 2; x++) if ((x + y) % 5) px(b, x, y, 1); // ledges
+    }
+    for (let y = 46; y < 92; y++) {
+      const half = Math.round((y - 46) * 0.22) + 1;
+      for (let x = 178 - half; x <= 180 + half; x++) {
+        const edge = x === 178 - half || x === 180 + half;
+        px(b, x, y, edge ? 0 : (x < 179 ? 3 : 2));
+      }
+    }
+    // ceiling with stalactites (y 8..22 screen 32..90)
+    const top = [];
+    for (let x = 0; x < W; x++) top[x] = 19 + Math.round(2 * Math.sin(x * 0.17) + 1.5 * Math.sin(x * 0.43 + 1)) + (R() < 0.3 ? 1 : 0);
+    for (let x = 0; x < W; x++) for (let y = 8; y <= top[x]; y++) {
+      let c = 2;
+      if (y === top[x]) c = 0;
+      else if (y === top[x] - 1) c = 3;
+      else if (bayer(x, y) < 0.25 + (y - 8) * 0.02) c = 1;
+      px(b, x, y, c);
+    }
+    const ST = [[8, 7], [31, 4], [47, 9], [60, 5], [77, 12], [96, 6], [112, 8], [140, 11], [157, 4], [168, 7], [191, 10]];
+    for (const [sx, len] of ST) {
+      const base = top[sx], w0 = len > 8 ? 2 : 1;
+      for (let j = 0; j < len; j++) {
+        const half = Math.max(0, Math.round(w0 * (1 - j / len)));
+        for (let x = sx - half; x <= sx + half; x++) px(b, x, base + j, x === sx - half ? 3 : 2);
+        px(b, sx - half - 1, base + j, 0); px(b, sx + half + 1, base + j, 0);
+      }
+      px(b, sx, base + len, 0);
+    }
+  }
+}
+
+function drawGround(b, stage) {
+  const R = rng(stage * 7 + 3);
+  const spans = stage === 1 ? [[0, 82], [110, 200]] : [[0, 62], [152, 200]];
+  for (const [x0, x1] of spans) {
+    for (let x = x0; x < x1; x++) for (let y = 90; y < H; y++) {
+      let c;
+      if (stage === 1) {
+        c = y < 92 ? 5 : (hn(x, y) < 0.13 ? 7 : 8);
+        if (y === 90 && bayer(x, y + 2) < 0.4) c = 6;
+        if (y >= 96 && bayer(x, y) < 0.5) c = 7;
+      } else {
+        c = y === 90 ? 3 : (y === 91 ? 2 : (hn(x, y) < 0.12 ? 1 : 2));
+        if (y === 94 + ((x >> 3) % 3) && (x * 3 + 1) % 7 > 1) c = 1;
+      }
+      if (x === x0 && x0 > 0 || x === x1 - 1 && x1 < W) c = 0;
+      px(b, x, y, c);
+    }
+    for (let x = x0 + 1; x < x1 - 1; x++) {
+      if (stage === 1) {
+        if (R() < 0.35) { px(b, x, 92, 5); if (R() < 0.4) px(b, x, 93, 4); } // grass hanging into dirt
+        if (R() < 0.12) px(b, x, 89, 5); // blades
+        if (R() < 0.05) { px(b, x, 95 + (R() * 3 | 0), 3); } // pebbles
+      } else {
+        if (R() < 0.15) px(b, x, 89, 2); // rubble
+        if (R() < 0.08) px(b, x, 89, 3);
+      }
+    }
+    if (stage === 1) { px(b, x0 > 0 ? x0 - 1 : -9, 90, 5); px(b, x1 < W ? x1 : -9, 90, 5); px(b, x0 > 0 ? x0 - 1 : -9, 91, 4); px(b, x1 < W ? x1 : -9, 91, 4); }
+  }
+  if (stage === 1) {
+    // pit bottom stays as sky haze -> fill with shadow so it reads as a hole
+    for (let x = 82; x < 110; x++) for (let y = 90; y < H; y++) dith(b, x, y, 4, 0, (y - 89) / 8);
+    // flowers
+    for (const [fx, fc] of [[12, 10], [27, 11], [70, 10], [121, 11], [131, 10], [189, 11]]) { px(b, fx, 88, fc); px(b, fx, 89, 5); }
+    // raised step x140..175, top 75
+    for (let x = 140; x < 175; x++) for (let y = 75; y < 90; y++) {
+      let c = y < 77 ? 5 : (hn(x, y) < 0.13 ? 7 : 8);
+      if (y === 75 && bayer(x, y + 2) < 0.4) c = 6;
+      if (y > 84 && bayer(x, y) < 0.5) c = 7;
+      if (x === 140 || x === 174) c = y < 77 ? 4 : 0;
+      px(b, x, y, c);
+    }
+    for (let x = 141; x < 174; x++) { if (R() < 0.35) px(b, x, 77, 5); if (R() < 0.12) px(b, x, 74, 5); }
+    for (let x = 140; x < 175; x++) px(b, x, 89, 0);
+  } else {
+    // pit beneath crumble tiles
+    rect(b, 62, 95, 90, 5, 0);
+  }
+}
+
+function lightPass(b, cx, cy, ramp) {
+  for (let y = cy - 30; y <= cy + 30; y++) for (let x = cx - 30; x <= cx + 30; x++) {
+    if (x < 0 || x >= W || y < 9 || y >= H) continue;
+    const d = Math.hypot(x - cx, y - cy);
+    let steps = 0;
+    if (d < 7) steps = 2;
+    else if (d < 13) steps = 1;
+    else if (d < 19) steps = bayer(x, y) < 0.5 ? 1 : 0;
+    else if (d < 26) steps = bayer(x, y) < 0.2 ? 1 : 0;
+    let c = b[y * W + x];
+    for (let s = 0; s < steps; s++) c = ramp[c];
+    b[y * W + x] = c;
+  }
+}
+function drawShard(b, x, y, h) { // crystal shard: outline, highlight edge, pale tip
+  px(b, x + 1, y - 1, 0);
+  px(b, x + 1, y, 14);
+  for (let j = 1; j < h; j++) { px(b, x, y + j, 0); px(b, x + 1, y + j, j < 3 ? 14 : 15); px(b, x + 2, y + j, 15); px(b, x + 3, y + j, 0); }
+  px(b, x + 2, y, 0);
+}
+const WARM = [1, 2, 7, 8, 5, 6, 6, 8, 9, 10, 10, 9, 13, 14, 14, 14];
+const COOL = [1, 2, 15, 14, 15, 6, 6, 3, 8, 10, 10, 11, 13, 14, 14, 14];
+
+function drawPlatform(b, kind, x, y, i, t) {
+  if (kind === "move") { // 23x4 plank on a rail, with travel marks
+    rect(b, x, y, 23, 4, 0);
+    rect(b, x + 1, y + 1, 21, 2, 8);
+    for (let k = 1; k < 22; k++) px(b, x + k, y + 1, k % 7 === 0 ? 7 : 9);
+    for (const k of [6, 13, 20]) px(b, x + k, y + 2, 7);
+    px(b, x + 2, y + 2, 10); px(b, x + 20, y + 2, 10); // bolts
+    px(b, x - 2, y + 1, 14); px(b, x - 4, y + 1, 14); px(b, x + 24, y + 1, 14); px(b, x + 26, y + 1, 14); // travel marks
+  } else { // crumble tile 10x5, i = tile index, dmg 0..2
+    const dmg = i;
+    const shiftL = dmg === 2 ? 1 : 0, shiftR = dmg === 2 ? 2 : 0;
+    for (let j = 0; j < 5; j++) for (let k = 0; k < 10; k++) {
+      if (dmg === 2 && (k === 4 || k === 5) && j > 0) continue; // split
+      const dy = dmg === 2 ? (k < 5 ? shiftL : shiftR) : 0;
+      let c = j === 0 ? 9 : (j === 4 ? 0 : (bayer(x + k, y + j) < 0.3 ? 7 : 8));
+      if (k === 0 || (k === 9 && i === 8)) c = 0; else if (k === 9 && j > 0 && j < 4) c = 7;
+      if (dmg === 2 && (k === 3 || k === 6)) c = 0;
+      px(b, x + k, y + j + dy, c);
+    }
+    if (dmg >= 1) { px(b, x + 4, y + 1, 0); px(b, x + 5, y + 2, 0); px(b, x + 5, y + 3, 0); px(b, x + 6, y + 1, 7); }
+    if (dmg === 0) { px(b, x + 3, y + 2, 7); }
+    if (dmg === 2) { // falling chips
+      px(b, x + 4, y + 7, 8); px(b, x + 5, y + 7, 0); px(b, x + 2, y + 9, 7); px(b, x + 7, y + 8, 9); px(b, x + 8, y + 8, 0);
+    }
+  }
+}
+
+function drawPlayer(b, x, y) { spr(b, x - 2, y - 10, PLAYER); } // x = left of body, y = feet
+function drawEnemy(b, kind, x, y, t) {
+  if (kind === "walker") spr(b, x, y - 7, ENEMY);
+  else { // bee, centre x,y
+    spr(b, x - 4, y - 3, (t >> 3) & 1 ? BEE_B : BEE_A);
+    px(b, x + 6, y - 1, 3); px(b, x + 8, y - 2, 2); px(b, x + 10, y - 1, 2); // flight trail
+  }
+}
+function drawHeart(b, cx, cy, t) {
+  const bob = (t >> 4) & 1;
+  spr(b, cx - 3, cy - 3 - bob, HEART);
+  const tw = (t >> 3) % 3;
+  const c = 10;
+  if (tw === 0) { px(b, cx + 5, cy - 5, c); px(b, cx + 4, cy - 5, 14); px(b, cx + 6, cy - 5, 14); px(b, cx + 5, cy - 6, 14); px(b, cx + 5, cy - 4, 14); }
+  else if (tw === 1) { px(b, cx - 5, cy + 2, c); }
+  else { px(b, cx + 5, cy - 5, c); }
+}
+function drawFlag(b, x, y0, y1, t) {
+  for (let y = y0; y < y1; y++) { px(b, x, y, 10); px(b, x + 1, y, 3); }
+  rect(b, x, y0 - 2, 2, 2, 9); px(b, x, y0 - 2, 10);
+  rect(b, x - 1, y1 - 2, 4, 2, 3); for (let i = -1; i < 3; i++) px(b, x + i, y1 - 2, 14);
+  const wave = (t >> 4) & 1;
+  const FL = wave ? [
+    "kkkkkkk..",
+    "LLLLLLLkk",
+    "LLcLLLLGk",
+    "GGLLGGGk.",
+    "GGGGGkk..",
+    "kkkkk...."
+  ] : [
+    "kkkkkk...",
+    "LLLLLLkkk",
+    "LLcLLLLGk",
+    "GGLLLGGGk",
+    "GGGGGGkk.",
+    "kkkkkk..."
+  ];
+  spr(b, x + 2, y0 + 1, FL);
+}
+function drawTorch(b, x, y, t) {
+  rect(b, x, y + 4, 2, 6, 8); px(b, x + 1, y + 4, 7); px(b, x + 1, y + 6, 7);
+  rect(b, x - 1, y + 3, 4, 1, 0); px(b, x - 1, y + 7, 0); px(b, x + 2, y + 7, 0); px(b, x - 2, y + 7, 3); // bracket
+  const f = (t >> 3) % 3;
+  const FLAMES = [
+    ["..r..", ".ror.", ".ocor", "roccr", ".ror."],
+    ["...r.", "..or.", ".rcor", "roccr", ".ror."],
+    [".r...", ".ro..", "rocr.", "roccr", ".ror."]
+  ];
+  spr(b, x - 2, y - 2, FLAMES[f]);
+  if (f !== 1) px(b, x + 3, y - 4, 9); else px(b, x - 2, y - 5, 9); // sparks
+}
+
+function drawHUD(b, stage) {
+  rect(b, 0, 0, W, 8, 0);
+  for (let x = 0; x < W; x++) px(b, x, 7, (x & 1) ? 1 : 2);
+  const maxHp = stage === 1 ? 3 : 4;
+  for (let i = 0; i < maxHp; i++) spr(b, 2 + i * 9, 1, i < 3 ? HUD_HEART : HUD_HEART_EMPTY);
+  const x0 = 50;
+  let x = text(b, x0, 1, stage === 1 ? "1-2" : "2-4", 10, 2);
+  x += 6; spr(b, x, 1, SWORD); x = text(b, x + 9, 1, stage === 1 ? "1" : "3", 10, 2);
+  x += 6; spr(b, x, 1, HOURGLASS); text(b, x + 7, 1, stage === 1 ? "0:42" : "1:15", 10, 2);
+  // pause button (screen x 722..796)
+  rect(b, 181, 0, 18, 7, 3);
+  rect(b, 182, 1, 16, 5, 1);
+  for (let i = 182; i < 198; i++) px(b, i, 1, 2);
+  rect(b, 187, 2, 2, 4, 10); rect(b, 191, 2, 2, 4, 10);
+}
+
+// ---------- scenes ----------
+function setupCanvas(id, stage) {
+  const out = document.getElementById(id).getContext("2d");
+  out.imageSmoothingEnabled = false;
+  const low = document.createElement("canvas"); low.width = W; low.height = H;
+  const lctx = low.getContext("2d");
+  const img = lctx.createImageData(W, H), img32 = new Uint32Array(img.data.buffer);
+  const bg = new Uint8Array(W * H);
+  drawSky(bg, stage);
+  drawFar(bg, stage);
+  drawGround(bg, stage);
+  if (stage === 2) {
+    // crystal cluster on the right ledge, small cool light
+    lightPass2(bg, 189, 86, COOL, 10);
+    for (const [sx, sh] of [[184, 4], [187, 8], [191, 6], [194, 3]]) drawShard(bg, sx, 89 - sh, sh);
+    lightPass(bg, 31, 50, WARM); // torch
+  }
+  const fb = new Uint8Array(W * H);
+  return function frame(t) {
+    fb.set(bg);
+    if (stage === 1) {
+      drawFlag(fb, 62, 65, 90, t);
+      drawPlatform(fb, "move", 90, 75, 0, t);
+      drawHeart(fb, 125, 75, t);
+      drawEnemy(fb, "walker", 150, 75, t);
+      drawPlayer(fb, 37, 90);
+    } else {
+      drawTorch(fb, 30, 50, t);
+      for (let i = 0; i < 9; i++) drawPlatform(fb, "crumble", 62 + i * 10, 90, i === 4 ? 2 : (i === 1 || i === 3 || i === 5 ? 1 : 0), t);
+      drawPlayer(fb, 75, 90);
+      drawEnemy(fb, "bee", 130, 57, t);
+    }
+    drawHUD(fb, stage);
+    for (let i = 0; i < W * H; i++) img32[i] = PAL32[fb[i]];
+    lctx.putImageData(img, 0, 0);
+    out.drawImage(low, 0, 0, W * S, H * S);
+  };
+}
+function lightPass2(b, cx, cy, ramp, r) { // small single-step ring
+  for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
+    const d = Math.hypot(x - cx, y - cy);
+    if (d < r && (d < r * 0.5 || bayer(x, y) < 0.5) && y >= 9 && x >= 0 && x < W && y < H) b[y * W + x] = ramp[b[y * W + x]];
+  }
+}
+
+const f1 = setupCanvas("c1", 1), f2 = setupCanvas("c2", 2);
+let tick = 0;
+function loop() { f1(tick); f2(tick); tick++; requestAnimationFrame(loop); }
+loop();
+</script>
+</body>
+</html>

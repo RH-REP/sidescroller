@@ -1,0 +1,1108 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>方眼ノートの落書き</title>
+<style>
+  :root { --bg:#dedad2; --text:#2f2e33; --sub:#5a5753; --card:#f3efe3; }
+  html, body { margin:0; background:var(--bg); color:var(--text);
+    font-family:"Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif; }
+  main { width:800px; margin:0 auto; padding:14px 20px 16px; }
+  h1 { font-size:24px; margin:0 0 6px; letter-spacing:.04em; font-weight:normal; }
+  p.intent { font-size:12.5px; line-height:1.7; margin:0 0 10px; color:var(--sub); }
+  .inks { display:grid; grid-template-columns:repeat(9, 1fr); gap:4px; margin:0 0 10px; padding:0; list-style:none; }
+  .inks li { display:flex; flex-direction:column; gap:3px; font-size:10.5px; line-height:1.2;
+    background:var(--card); padding:4px; border-radius:3px; white-space:nowrap; }
+  .inks i { height:14px; display:block; border-radius:2px; border:1px solid rgba(0,0,0,.18); }
+  .inks code { font-family:monospace; font-size:10px; color:var(--sub); }
+  figure { margin:0 0 12px; }
+  figcaption { font-size:12px; margin:0 0 4px; color:var(--sub); }
+  canvas { display:block; width:800px; height:400px; box-shadow:0 1px 3px rgba(0,0,0,.28); }
+</style>
+</head>
+<body>
+<main>
+  <h1>方眼ノートの落書き</h1>
+  <p class="intent">授業中に方眼ノートの余白へ描いた落書きを、そのまま遊べる面にしたテーマ。線はすべて種の決まった揺れで2度なぞり、色は塗りつぶさずに鉛筆・青ボールペン・赤ペン・緑の色鉛筆の斜線で付けるので、単色の四角や左右対称の丘といった図形の既定値がどこにも残らない。洞窟は紙を鉛筆で塗りつぶし、たいまつや光る石のまわりを消しゴムでこすって明かりにした（半透明の光の円は使っていない）。赤は命と危険（ハート・床のひび・敵の眉）、緑は「通った」しるしと決めて、インクの役目で画面を読ませる。</p>
+  <ul class="inks" id="inks"></ul>
+  <figure>
+    <figcaption>場面1：1面「草原」</figcaption>
+    <canvas id="c1" width="800" height="400"></canvas>
+  </figure>
+  <figure>
+    <figcaption>場面2：2面「洞窟」</figcaption>
+    <canvas id="c2" width="800" height="400"></canvas>
+  </figure>
+</main>
+<script>
+'use strict';
+/* ============================================================
+   インク（使う色はこれだけ）
+   ============================================================ */
+const INK = {
+  paper:    '#f3efe3', // ノートの紙
+  grid:     '#9fc0d3', // 方眼（印刷）
+  graphite: '#3b3b40', // 鉛筆
+  blue:     '#21409a', // 青ボールペン
+  red:      '#c23a2b', // 赤ペン
+  green:    '#4c8a3b', // 緑の色鉛筆
+  marker:   '#f1cc35', // 黄色の蛍光ペン
+  coffee:   '#a8835a', // コーヒーのしみ
+  desk:     '#2a2622', // 破れ目から見える机
+};
+const INK_LABEL = [
+  ['paper','紙'],['grid','方眼'],['graphite','鉛筆'],['blue','青ボールペン'],['red','赤ペン'],
+  ['green','緑の色鉛筆'],['marker','蛍光ペン'],['coffee','コーヒー'],['desk','机（破れ目）'],
+];
+const FONT = '"Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif';
+const W = 800, H = 400;
+
+/* ============================================================
+   道具：種の決まった乱数・手描きの線・斜線・ぐるぐる・手書き文字
+   ============================================================ */
+function rng(seed) {
+  let a = (seed * 2654435761) >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+
+// ペンで1本の線を引く。2回目は少しずらして細く薄く（ペンで2度なぞった跡）。
+function pen(ctx, pts, o) {
+  o = Object.assign({ ink: INK.graphite, w: 1.6, jit: 0.9, step: 9, passes: 2, off: 0.9,
+                      alpha: 1, closed: false, seed: 1, dash: null }, o);
+  const R = rng(o.seed);
+  const list = o.closed ? pts.concat([pts[0]]) : pts;
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = o.ink;
+  if (o.dash) ctx.setLineDash(o.dash);
+  for (let p = 0; p < o.passes; p++) {
+    const dx = (R() - 0.5) * 2 * o.off * p, dy = (R() - 0.5) * 2 * o.off * p;
+    const q = [];
+    for (let i = 0; i < list.length - 1; i++) {
+      const x0 = list[i][0], y0 = list[i][1], x1 = list[i + 1][0], y1 = list[i + 1][1];
+      const L = Math.hypot(x1 - x0, y1 - y0) || 1;
+      const n = Math.max(1, Math.round(L / o.step));
+      const nx = -(y1 - y0) / L, ny = (x1 - x0) / L;
+      for (let k = (i ? 1 : 0); k <= n; k++) {
+        const t = k / n, j = (R() - 0.5) * 2 * o.jit;
+        q.push([x0 + (x1 - x0) * t + nx * j + dx, y0 + (y1 - y0) * t + ny * j + dy]);
+      }
+    }
+    // 2回目は始まりと終わりを少し短くする
+    const cut = p ? Math.min(2, Math.floor(q.length / 6)) : 0;
+    const qq = q.slice(cut, q.length - cut);
+    if (qq.length < 2) continue;
+    ctx.beginPath(); ctx.moveTo(qq[0][0], qq[0][1]);
+    if (o.sharp) for (let i = 1; i < qq.length - 1; i++) ctx.lineTo(qq[i][0], qq[i][1]);
+    else for (let i = 1; i < qq.length - 1; i++) {
+      ctx.quadraticCurveTo(qq[i][0], qq[i][1], (qq[i][0] + qq[i + 1][0]) / 2, (qq[i][1] + qq[i + 1][1]) / 2);
+    }
+    ctx.lineTo(qq[qq.length - 1][0], qq[qq.length - 1][1]);
+    ctx.lineWidth = o.w * (p ? 0.65 : 1);
+    ctx.globalAlpha = o.alpha * (p ? 0.5 : 0.95);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// 四隅で少しはみ出す箱（定規なしで描いた四角）
+function penBox(ctx, x, y, w, h, o) {
+  const s = (o && o.seed) || 1, ov = (o && o.over != null) ? o.over : 2.5;
+  pen(ctx, [[x - ov, y], [x + w + ov * 0.6, y]], Object.assign({}, o, { seed: s }));
+  pen(ctx, [[x + w, y - ov * 0.6], [x + w, y + h + ov]], Object.assign({}, o, { seed: s + 1 }));
+  pen(ctx, [[x + w + ov * 0.4, y + h], [x - ov, y + h]], Object.assign({}, o, { seed: s + 2 }));
+  pen(ctx, [[x, y + h + ov * 0.5], [x, y - ov]], Object.assign({}, o, { seed: s + 3 }));
+}
+
+// いびつな楕円の点（overlap>0 で描き終わりが重なる＝手で丸を描いたとき）
+function ellipsePts(cx, cy, rx, ry, seed, wob, overlap, rot) {
+  wob = wob == null ? 0.06 : wob; overlap = overlap || 0; rot = rot || 0;
+  const R = rng(seed), ph1 = R() * 6.28, ph2 = R() * 6.28, a0 = R() * 6.28;
+  const n = Math.max(12, Math.round((rx + ry) * 0.7));
+  const tot = Math.PI * 2 + overlap, pts = [];
+  const cr = Math.cos(rot), sr = Math.sin(rot);
+  const last = overlap ? n : n - 1;
+  for (let i = 0; i <= last; i++) {
+    const a = a0 + tot * i / n;
+    const k = 1 + wob * Math.sin(2 * a + ph1) + wob * 0.5 * Math.sin(3 * a + ph2);
+    const x = Math.cos(a) * rx * k, y = Math.sin(a) * ry * k;
+    pts.push([cx + x * cr - y * sr, cy + x * sr + y * cr]);
+  }
+  return pts;
+}
+
+function polyPath(ctx, poly) {
+  ctx.beginPath(); ctx.moveTo(poly[0][0], poly[0][1]);
+  for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1]);
+  ctx.closePath();
+}
+// 紙の色で下地を作る（消しゴムで消した所・塗る前の白）
+function paperFill(ctx, poly, alpha) {
+  ctx.save(); ctx.globalAlpha = alpha == null ? 1 : alpha; ctx.fillStyle = INK.paper;
+  polyPath(ctx, poly); ctx.fill(); ctx.restore();
+}
+
+// 多角形の中を斜線で塗る。線の端は少し足りなかったり、はみ出したりする。
+function hatchPoly(ctx, poly, o) {
+  o = Object.assign({ angle: Math.PI / 4, gap: 4, ink: INK.graphite, w: 1, alpha: 0.6,
+                      seed: 1, jit: 0.6, over: 1.5, cross: 0 }, o);
+  const R = rng(o.seed);
+  const ux = Math.cos(o.angle), uy = Math.sin(o.angle), nx = -uy, ny = ux;
+  let mn = 1e9, mx = -1e9;
+  for (const p of poly) { const d = p[0] * nx + p[1] * ny; if (d < mn) mn = d; if (d > mx) mx = d; }
+  ctx.save(); ctx.strokeStyle = o.ink; ctx.lineCap = 'round';
+  for (let d = mn + o.gap * R(); d < mx; d += o.gap * (0.8 + R() * 0.4)) {
+    const ts = [];
+    for (let i = 0; i < poly.length; i++) {
+      const A = poly[i], B = poly[(i + 1) % poly.length];
+      const dA = A[0] * nx + A[1] * ny - d, dB = B[0] * nx + B[1] * ny - d;
+      if ((dA < 0) !== (dB < 0)) {
+        const s = dA / (dA - dB);
+        const px = A[0] + s * (B[0] - A[0]), py = A[1] + s * (B[1] - A[1]);
+        ts.push(px * ux + py * uy);
+      }
+    }
+    ts.sort((a, b) => a - b);
+    for (let k = 0; k + 1 < ts.length; k += 2) {
+      const t0 = ts[k] + (R() - 0.4) * o.over * 2, t1 = ts[k + 1] - (R() - 0.4) * o.over * 2;
+      if (t1 - t0 < 1) continue;
+      const L = t1 - t0, n = Math.max(1, Math.round(L / 16));
+      ctx.beginPath();
+      for (let m = 0; m <= n; m++) {
+        const t = t0 + L * m / n, j = (R() - 0.5) * o.jit * 2;
+        const x = ux * t + nx * (d + j), y = uy * t + ny * (d + j);
+        if (m) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      }
+      ctx.lineWidth = o.w * (0.75 + R() * 0.5);
+      ctx.globalAlpha = o.alpha * (0.65 + R() * 0.35);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+  if (o.cross) hatchPoly(ctx, poly, Object.assign({}, o, { angle: o.angle + o.cross, cross: 0,
+                                                          seed: o.seed + 101, alpha: o.alpha * 0.8 }));
+}
+
+// ぐるぐる塗り（毛玉・暗い穴）。clipPoly の中に収める。
+function scribble(ctx, clipPoly, cx, cy, rx, ry, o) {
+  o = Object.assign({ ink: INK.graphite, w: 1, alpha: 0.6, seed: 1, loops: 60, lr: 3.5 }, o);
+  const R = rng(o.seed);
+  ctx.save(); polyPath(ctx, clipPoly); ctx.clip();
+  ctx.strokeStyle = o.ink; ctx.lineWidth = o.w; ctx.globalAlpha = o.alpha; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  const rowGap = o.lr * 1.3, rows = Math.max(1, Math.ceil((ry * 2) / rowGap));
+  let th = R() * 6, first = true;
+  for (let r = 0; r <= rows; r++) {
+    const yy = cy - ry + r * rowGap + (R() - 0.5) * 2;
+    const dir = r % 2 ? -1 : 1;
+    const xs = cx - dir * (rx + o.lr), xe = cx + dir * (rx + o.lr);
+    const n = Math.ceil(Math.abs(xe - xs) / (o.lr * 0.16));
+    for (let k = 0; k <= n; k++) {
+      th += 0.75 + R() * 0.1;
+      const rr = o.lr * (0.85 + R() * 0.3);
+      const px = xs + (xe - xs) * k / n + Math.cos(th) * rr, py = yy + Math.sin(th) * rr * 0.9;
+      if (first) { ctx.moveTo(px, py); first = false; } else ctx.lineTo(px, py);
+    }
+  }
+  ctx.stroke(); ctx.restore();
+}
+
+// 手書き文字：1字ずつ大きさ・傾き・高さを揺らし、鉛筆の濃淡で2度描く
+function handText(ctx, str, x, y, o) {
+  o = Object.assign({ size: 17, ink: INK.graphite, seed: 3, rot: -0.02 }, o);
+  const R = rng(o.seed);
+  ctx.save(); ctx.translate(x, y); ctx.rotate(o.rot);
+  ctx.fillStyle = o.ink; ctx.textBaseline = 'alphabetic';
+  let cx = 0;
+  for (const ch of str) {
+    const s = o.size * (0.93 + R() * 0.14);
+    ctx.font = s.toFixed(1) + 'px ' + FONT;
+    const w = ctx.measureText(ch).width;
+    if (ch.trim()) {
+      ctx.save(); ctx.translate(cx + w / 2, (R() - 0.5) * 2.4); ctx.rotate((R() - 0.5) * 0.14);
+      ctx.globalAlpha = 0.9; ctx.fillText(ch, -w / 2, 0);
+      ctx.globalAlpha = 0.35; ctx.fillText(ch, -w / 2 + 0.6, 0.3);
+      ctx.restore();
+    }
+    cx += w + (R() - 0.5) * 1.2 + 0.4;
+  }
+  ctx.restore();
+  return cx;
+}
+
+/* ============================================================
+   紙（1回だけ描いて使い回す）
+   ============================================================ */
+let PAPER = null;
+function makePaper() {
+  const c = mk(W, H), g = c.getContext('2d'), R = rng(7);
+  g.fillStyle = INK.paper; g.fillRect(0, 0, W, H);
+  // 紙の目：小さなしみ
+  for (let i = 0; i < 1800; i++) {
+    g.globalAlpha = 0.035 + R() * 0.04;
+    g.fillStyle = R() < 0.5 ? '#8a7f6a' : '#ffffff';
+    g.fillRect(R() * W, R() * H, 1 + R() * 1.5, 1 + R());
+  }
+  // 方眼（印刷なので直線）：5mm ごとに薄く、1cm ごとに少し濃く
+  g.strokeStyle = INK.grid; g.lineWidth = 1;
+  for (let x = 8; x < W; x += 16) {
+    g.globalAlpha = ((x - 8) / 16) % 5 === 0 ? 0.62 : 0.32;
+    g.beginPath(); g.moveTo(x + 0.5, 0); g.lineTo(x + 0.5, H); g.stroke();
+  }
+  for (let y = 8; y < H; y += 16) {
+    g.globalAlpha = ((y - 8) / 16) % 5 === 0 ? 0.62 : 0.32;
+    g.beginPath(); g.moveTo(0, y + 0.5); g.lineTo(W, y + 0.5); g.stroke();
+  }
+  // 余白の赤い線
+  g.globalAlpha = 0.38; g.strokeStyle = INK.red;
+  g.beginPath(); g.moveTo(52.5, 0); g.lineTo(52.5, H); g.stroke();
+  // とじ穴（下のページの色が見える）
+  for (const hy of [118, 230]) {
+    g.globalAlpha = 1; g.fillStyle = '#cfcac0';
+    g.beginPath(); g.arc(20, hy, 7, 0, Math.PI * 2); g.fill();
+    g.globalAlpha = 0.35; g.strokeStyle = '#6d665b'; g.lineWidth = 1.4;
+    g.beginPath(); g.arc(20, hy, 6.5, Math.PI * 0.9, Math.PI * 1.9); g.stroke();
+  }
+  g.globalAlpha = 1;
+  return c;
+}
+
+/* ============================================================
+   場面のデータ（README の位置と大きさ）
+   ============================================================ */
+const SCENE1 = {
+  stage: 'meadow', seed: 100,
+  hud: { hp: 3, max: 3, text: '1-2　挑戦 1　0:42' },
+  groundY: 360, ground: [[0, 330], [440, 800]], steps: [[560, 700, 300]],
+  movers: [[360, 300, 90, 14]], player: [150, 360], walkers: [[600, 300]],
+  pickups: [[500, 300]], flags: [[250, 260, 360, 'passed']],
+};
+const SCENE2 = {
+  stage: 'cave', seed: 200,
+  hud: { hp: 3, max: 4, text: '2-4　挑戦 3　1:15' },
+  groundY: 360, ground: [[0, 250], [610, 800]], steps: [],
+  crumble: { x: 250, y: 360, n: 9, w: 40, h: 20, breaking: 4 },
+  player: [300, 360], bees: [[520, 230]],
+  torches: [[128, 196], [688, 178]], crystals: [[46, 360], [752, 360]],
+};
+
+/* ============================================================
+   drawSky：紙・方眼・空の落書き（洞窟では鉛筆の塗りと消しゴム）
+   ============================================================ */
+function drawSky(ctx, scene) {
+  ctx.drawImage(PAPER, 0, 0);
+  if (scene.stage === 'meadow') {
+    // コーヒーのしみ（右上、半分ははみ出す）
+    ctx.save();
+    ctx.globalAlpha = 0.06; ctx.fillStyle = INK.coffee;
+    ctx.beginPath(); ctx.arc(792, 104, 50, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    pen(ctx, ellipsePts(792, 104, 50, 49, 31, 0.03, 0.2), { ink: INK.coffee, w: 3, alpha: 0.22, jit: 0.6, seed: 32 });
+    pen(ctx, ellipsePts(790, 106, 47, 46, 33, 0.04, -0.9), { ink: INK.coffee, w: 1.2, alpha: 0.35, jit: 0.4, seed: 34, passes: 1 });
+
+    // 太陽：蛍光ペンの塗りが線から少しずれている
+    const sun = ellipsePts(121, 97, 21, 20, 41, 0.05, 0);
+    hatchPoly(ctx, sun.map(p => [p[0] + 3, p[1] + 2]), { ink: INK.marker, angle: -0.6, gap: 3.2, w: 3.4, alpha: 0.75, seed: 42, jit: 0.4, over: 3 });
+    pen(ctx, ellipsePts(118, 95, 20, 19, 43, 0.06, 0.7), { ink: INK.red, w: 1.7, seed: 44 });
+    const R = rng(45);
+    for (let i = 0; i < 9; i++) {
+      const a = i / 9 * Math.PI * 2 + R() * 0.25, r0 = 26 + R() * 3, r1 = r0 + 8 + R() * 9;
+      pen(ctx, [[118 + Math.cos(a) * r0, 95 + Math.sin(a) * r0], [118 + Math.cos(a) * r1, 95 + Math.sin(a) * r1]],
+          { ink: INK.red, w: 1.5, seed: 46 + i, jit: 0.5 });
+    }
+    // 雲（青ボールペン）
+    drawCloud(ctx, 340, 104, 118, 51);
+    drawCloud(ctx, 590, 76, 84, 61);
+    // 鳥
+    for (const [bx, by, s] of [[468, 128, 1], [486, 120, 0.8], [452, 140, 0.7]]) {
+      pen(ctx, [[bx - 6 * s, by - 3 * s], [bx - 2 * s, by - 1 * s], [bx, by + 1 * s]], { w: 1.3, seed: bx, jit: 0.3, step: 4, passes: 1 });
+      pen(ctx, [[bx, by + 1 * s], [bx + 3 * s, by - 2 * s], [bx + 7 * s, by - 3 * s]], { w: 1.3, seed: bx + 1, jit: 0.3, step: 4, passes: 1 });
+    }
+  } else {
+    // 洞窟：紙を鉛筆で塗りつぶし、明かりの所を消しゴムでこする
+    const g = mk(W, H), c = g.getContext('2d');
+    const all = [[-4, 34], [W + 4, 34], [W + 4, H + 4], [-4, H + 4]];
+    hatchPoly(c, all, { angle: -1.05, gap: 2.2, alpha: 0.6, w: 1.4, seed: 11, jit: 0.9 });
+    hatchPoly(c, all, { angle: -0.35, gap: 2.5, alpha: 0.5, w: 1.3, seed: 12, jit: 0.9 });
+    hatchPoly(c, all, { angle: 0.62, gap: 3.0, alpha: 0.45, w: 1.2, seed: 13 });
+    hatchPoly(c, [[-4, 250], [W + 4, 270], [W + 4, H + 4], [-4, H + 4]], { angle: 0.1, gap: 2.4, alpha: 0.35, w: 1.2, seed: 14 });
+    c.globalCompositeOperation = 'destination-out';
+    for (const [tx, ty] of scene.torches) eraseRub(c, tx, ty - 12, 118, tx + ty, 1);
+    for (const [cx, cy] of scene.crystals) eraseRub(c, cx, cy - 18, 46, cx * 3, 0.7);
+    c.globalCompositeOperation = 'source-over';
+    ctx.drawImage(g, 0, 0);
+  }
+}
+
+// 消しゴムでこすった明かり：往復する太い線を、中心ほど濃く重ねる
+function eraseRub(c, cx, cy, r, seed, strength) {
+  const R = rng(seed);
+  c.save(); c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = '#000';
+  const n = Math.round(r * 1.6);
+  for (let i = 0; i < n; i++) {
+    const a = R() * Math.PI * 2, d = Math.pow(R(), 0.75) * r;
+    const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d * 0.8;
+    const fall = 1 - d / r;
+    const ang = -0.5 + (R() - 0.5) * 0.5, len = 8 + R() * 18 * (0.5 + fall);
+    const ux = Math.cos(ang), uy = Math.sin(ang);
+    c.globalAlpha = (0.07 + 0.5 * fall * fall) * strength;
+    c.lineWidth = 4 + R() * 6;
+    c.beginPath();
+    // 3往復
+    for (let k = 0; k < 4; k++) {
+      const s = (k % 2 ? 1 : -1) * len / 2, off = k * 1.6;
+      const px = x + ux * s - uy * off, py = y + uy * s + ux * off;
+      if (k) c.lineTo(px, py); else c.moveTo(px, py);
+    }
+    c.stroke();
+  }
+  c.restore();
+}
+
+function drawCloud(ctx, cx, cy, w, seed) {
+  const R = rng(seed), pts = [];
+  const left = cx - w / 2, right = cx + w / 2;
+  // 下はほぼ平ら、上はふぞろいのこぶ
+  let x = right;
+  pts.push([right, cy]);
+  let i = 0;
+  while (x > left + 6) {
+    // まん中ほど大きなこぶ、端は小さく、高さもばらばら
+    const mid = 1 - Math.abs((x - cx) / (w / 2));
+    const r = 5 + R() * 6 + mid * (8 + R() * 10), x2 = Math.max(left, x - r * (1.1 + R() * 0.7));
+    const mx = (x + x2) / 2, hr = (x - x2) / 2, vr = r * (0.7 + R() * 0.7);
+    const baseY = cy - 3 - mid * (6 + R() * 8);
+    const a0 = 0.15 + R() * 0.3, a1 = Math.PI - 0.1 - R() * 0.3;
+    for (let k = 0; k <= 6; k++) {
+      const a = a0 + (a1 - a0) * k / 6;
+      pts.push([mx + Math.cos(a) * hr, baseY - Math.sin(a) * vr]);
+    }
+    x = x2; i++;
+  }
+  pts.push([left, cy]);
+  const fill = pts.slice();
+  pen(ctx, pts.concat([[right + 4, cy + 1]]), { ink: INK.blue, w: 1.6, seed: seed + 1, jit: 0.6, step: 6 });
+  // 下側に影の斜線
+  hatchPoly(ctx, [[left + 10, cy - 9], [right - 8, cy - 11], [right - 4, cy - 1], [left + 6, cy - 1]],
+            { ink: INK.blue, angle: -1.0, gap: 4.2, w: 1, alpha: 0.45, seed: seed + 2 });
+  return fill;
+}
+
+/* ============================================================
+   drawFar：遠景と中景
+   ============================================================ */
+function drawFar(ctx, scene) {
+  const R = rng(scene.seed + 5);
+  if (scene.stage === 'meadow') {
+    // 遠い山：ぎざぎざの稜線と、その下だけの鉛筆の陰
+    let ridge = [[-10, 236], [120, 196], [205, 228], [318, 168], [400, 222], [470, 204], [604, 160], [690, 218], [812, 190]];
+    for (let pass = 0, amp = 22; pass < 3; pass++, amp *= 0.5) {
+      const nr = [ridge[0]];
+      for (let i = 1; i < ridge.length; i++) {
+        const a = ridge[i - 1], b = ridge[i];
+        nr.push([(a[0] + b[0]) / 2 + (R() - 0.5) * amp * 0.6, (a[1] + b[1]) / 2 + (R() - 0.45) * amp], b);
+      }
+      ridge = nr;
+    }
+    const band = ridge.concat(ridge.slice().reverse().map(p => [p[0] + 6, p[1] + 26 + R() * 10]));
+    hatchPoly(ctx, band, { angle: 1.15, gap: 4.2, w: 1, alpha: 0.32, seed: 51, jit: 0.5 });
+    pen(ctx, ridge, { w: 1.4, alpha: 0.75, seed: 52, step: 6, jit: 0.6 });
+    // 中景の丘：左右で形の違う、ゆるい起伏（緑の色鉛筆）
+    const hill = [];
+    const p1 = R() * 6, p2 = R() * 6;
+    for (let hx = -10; hx <= W + 10; hx += 20) {
+      hill.push([hx, 304 + 14 * Math.sin(hx / 133 + p1) + 7 * Math.sin(hx / 47 + p2) - hx * 0.012]);
+    }
+    const hillBand = hill.concat(hill.slice().reverse().map(p => [p[0], p[1] + 30]));
+    hatchPoly(ctx, hillBand, { ink: INK.green, angle: -0.95, gap: 3.6, w: 1.1, alpha: 0.42, seed: 53 });
+    pen(ctx, hill, { ink: INK.green, w: 1.6, seed: 54, step: 14 });
+    // 木
+    drawTree(ctx, 44, 360, 74, 61);
+    drawTree(ctx, 302, 360, 50, 62);
+    drawTree(ctx, 768, 360, 66, 63);
+  } else {
+    // 奥の岩の柱（塗りを重ねて暗く、明かりの側だけ消しゴムの縁）
+    const cols = [[205, 224, 30, 128], [470, 262, 20, 688], [566, 206, 34, 688], [348, 276, 16, 128], [770, 250, 22, 688]];
+    for (const [cx, top, hw, lightX] of cols) {
+      // 石筍：下が太く、上へ細く、ふぞろいに段がつく
+      const lean = (R() - 0.5) * 10, L = [], Rt = [];
+      for (let k = 0; k <= 6; k++) {
+        const t = k / 6, yy = 400 - (400 - top) * t;
+        const half = hw * Math.pow(1 - t, 0.8) + 2.5 + (R() - 0.5) * 4 * (1 - t);
+        L.push([cx + lean * t - half - (k % 2) * 2, yy]);
+        Rt.push([cx + lean * t + half + ((k + 1) % 2) * 2, yy + (R() - 0.5) * 6]);
+      }
+      const pts = L.concat([[cx + lean + 1, top - 3]], Rt.reverse());
+      hatchPoly(ctx, pts, { angle: 1.25, gap: 2.4, w: 1.2, alpha: 0.5, seed: cx, cross: 1.1 });
+      const side = lightX < cx ? pts.slice(1, 8) : pts.slice(7, 14);
+      pen(ctx, side, { ink: INK.paper, w: 1.8, alpha: 0.45, seed: cx + 1, passes: 1, jit: 1.2 });
+      pen(ctx, pts, { w: 1.3, alpha: 0.8, seed: cx + 2, step: 12 });
+    }
+    // 壁のひび
+    for (const [x0, y0] of [[60, 150], [400, 140], [740, 260], [300, 190]]) {
+      const pts = [[x0, y0]]; let px = x0, py = y0;
+      for (let i = 0; i < 4; i++) { px += 6 + R() * 10; py += (R() - 0.3) * 14; pts.push([px, py]); }
+      pen(ctx, pts, { ink: INK.paper, w: 1, alpha: 0.28, seed: x0 + y0, passes: 1, step: 5 });
+    }
+    // たいまつの柄と金具（炎は動くので別に描く）
+    for (const [tx, ty] of scene.torches) drawTorchBase(ctx, tx, ty);
+  }
+}
+
+function drawTree(ctx, x, base, h, seed) {
+  const R = rng(seed);
+  // 幹
+  pen(ctx, [[x - 3, base], [x - 2, base - h * 0.55]], { w: 1.5, seed: seed + 1, step: 6 });
+  pen(ctx, [[x + 4, base], [x + 2, base - h * 0.55]], { w: 1.5, seed: seed + 2, step: 6 });
+  hatchPoly(ctx, [[x - 3, base], [x - 2, base - h * 0.55], [x + 2, base - h * 0.55], [x + 4, base]],
+            { angle: 1.4, gap: 2.4, w: 1, alpha: 0.6, seed: seed + 3 });
+  // 葉：ふぞろいな丸をぐるぐる塗り
+  const cy = base - h * 0.62, rx = h * 0.34, ry = h * 0.38;
+  const crown = ellipsePts(x + (R() - 0.5) * 4, cy, rx, ry, seed + 4, 0.12, 0);
+  paperFill(ctx, crown, 0.85);
+  scribble(ctx, crown, x, cy, rx, ry, { ink: INK.green, w: 1, alpha: 0.5, seed: seed + 5, loops: Math.round(h * 0.7), lr: 4 });
+  pen(ctx, ellipsePts(x + (R() - 0.5) * 4, cy, rx, ry, seed + 4, 0.12, 0.5), { ink: INK.green, w: 1.6, seed: seed + 6, step: 6 });
+}
+
+function drawTorchBase(ctx, x, y) {
+  // 壁の金具
+  pen(ctx, [[x - 9, y + 22], [x + 9, y + 22]], { ink: INK.paper, w: 2, alpha: 0.7, seed: x + 3 });
+  pen(ctx, [[x - 9, y + 22], [x + 9, y + 22]], { w: 1.4, seed: x + 4 });
+  // 柄
+  const stick = [[x - 4, y], [x + 4, y], [x + 2, y + 34], [x - 2, y + 34]];
+  paperFill(ctx, stick, 0.9);
+  hatchPoly(ctx, stick, { angle: 1.3, gap: 2.2, w: 1, alpha: 0.7, seed: x + 5 });
+  pen(ctx, stick, { w: 1.4, closed: true, seed: x + 6, step: 5 });
+  // 布を巻いた所
+  pen(ctx, [[x - 5, y + 3], [x + 5, y + 1]], { w: 1.2, seed: x + 7, passes: 1 });
+  pen(ctx, [[x - 5, y + 7], [x + 5, y + 5]], { w: 1.2, seed: x + 8, passes: 1 });
+}
+
+function drawFlame(ctx, x, y, v) {
+  const R = rng(x * 7 + v * 13);
+  const h = 24 + R() * 6, lean = (R() - 0.5) * 5;
+  const pts = [[x - 7, y], [x - 8, y - 8], [x - 4 + lean * 0.3, y - h * 0.55], [x - 2 + lean, y - h * 0.8],
+               [x + lean, y - h], [x + 2 + lean * 0.6, y - h * 0.72], [x + 6, y - h * 0.5], [x + 8, y - 8], [x + 6, y]];
+  paperFill(ctx, pts, 1);
+  hatchPoly(ctx, pts, { ink: INK.marker, angle: -1.2, gap: 2.4, w: 2.6, alpha: 0.9, seed: v + x, jit: 0.4 });
+  const inner = [[x - 3, y], [x - 3, y - 7], [x + lean * 0.5, y - h * 0.5], [x + 3, y - 8], [x + 3, y]];
+  hatchPoly(ctx, inner, { ink: INK.red, angle: 1.1, gap: 2.2, w: 1, alpha: 0.75, seed: v + x + 1 });
+  pen(ctx, pts, { ink: INK.red, w: 1.5, closed: true, seed: v + x + 2, step: 5, jit: 0.5 });
+  // 火の粉
+  for (let i = 0; i < 3; i++) {
+    const sx = x + (R() - 0.5) * 16, sy = y - h - 4 - R() * 12;
+    pen(ctx, [[sx, sy], [sx + (R() - 0.5) * 3, sy - 3]], { ink: INK.red, w: 1.2, passes: 1, seed: i + v * 5 + x });
+  }
+}
+
+/* ============================================================
+   drawGround：地面・段・穴（草原）／地面・天井・穴の闇（洞窟）
+   ============================================================ */
+function groundPoly(scene, x0, x1) {
+  const y = scene.groundY, pts = [[x0, y]];
+  for (const [s0, s1, sy] of scene.steps) {
+    if (s0 >= x0 && s1 <= x1) pts.push([s0, y], [s0, sy], [s1, sy], [s1, y]);
+  }
+  pts.push([x1, y], [x1, H + 2], [x0, H + 2]);
+  return pts;
+}
+
+function drawGround(ctx, scene) {
+  const y = scene.groundY;
+  if (scene.stage === 'meadow') {
+    // 穴：ノートが破れて、下の机が見える
+    drawTear(ctx, scene.ground[0][1], scene.ground[1][0], y);
+    scene.ground.forEach(([x0, x1], i) => {
+      const poly = groundPoly(scene, x0, x1);
+      // 土：鉛筆の斜線を2方向
+      hatchPoly(ctx, poly.map(p => [p[0], p[1] + (p[1] < H ? 6 : 0)]),
+                { angle: 0.85, gap: 4.4, w: 1.1, alpha: 0.5, seed: 70 + i, cross: -1.9 });
+      // 地層の線と小石
+      const R = rng(80 + i);
+      for (const ly of [378, 392]) {
+        pen(ctx, [[x0 + 4, ly + R() * 4], [(x0 + x1) / 2, ly + R() * 4 - 2], [x1 - 4, ly + R() * 4]],
+            { w: 1, alpha: 0.4, seed: ly + i, step: 18, jit: 1.6, passes: 1 });
+      }
+      for (let k = 0; k < (x1 - x0) / 40; k++) {
+        const sx = x0 + 12 + R() * (x1 - x0 - 24), sy = 372 + R() * 22;
+        const st = ellipsePts(sx, sy, 3 + R() * 3, 2 + R() * 2, k + i * 50, 0.15, 0);
+        paperFill(ctx, st, 1);
+        pen(ctx, ellipsePts(sx, sy, 3 + R() * 3, 2 + R() * 2, k + i * 50, 0.15, 0.4), { w: 1.1, seed: k + 300, step: 3, jit: 0.3, passes: 1 });
+      }
+      // 草：緑の色鉛筆の帯と、上へ伸びる葉
+      const top = poly.slice(0, poly.length - 2);
+      for (let s = 0; s < top.length - 1; s++) {
+        const [ax, ay] = top[s], [bx, by] = top[s + 1];
+        if (ay !== by) continue; // 縦の辺は草なし
+        hatchPoly(ctx, [[ax, ay], [bx, by], [bx, by + 7], [ax, ay + 7]],
+                  { ink: INK.green, angle: 1.2, gap: 2.2, w: 1.2, alpha: 0.75, seed: 90 + s + i * 10 });
+        drawGrass(ctx, ax + 2, bx - 2, ay, 95 + s + i * 10);
+      }
+      // 外形線
+      pen(ctx, top, { w: 2.1, seed: 60 + i, step: 10, jit: 0.8 });
+    });
+    // 花
+    for (const [fx, fs] of [[214, 1], [528, 0.8], [724, 1.1], [92, 0.9]]) {
+      pen(ctx, [[fx, 360], [fx + 1, 360 - 10 * fs]], { ink: INK.green, w: 1.2, passes: 1, seed: fx });
+      pen(ctx, ellipsePts(fx + 1, 357 - 12 * fs, 2.6 * fs, 2.4 * fs, fx, 0.2, 0.6), { ink: INK.red, w: 1.3, seed: fx + 1, step: 2, passes: 1 });
+    }
+  } else {
+    // 崩れる床の下の闇
+    const cr = scene.crumble;
+    const voidPoly = [[cr.x, cr.y + 4], [cr.x + cr.w * cr.n, cr.y + 4], [cr.x + cr.w * cr.n, H + 2], [cr.x, H + 2]];
+    hatchPoly(ctx, voidPoly, { angle: 0.4, gap: 1.5, w: 1.5, alpha: 0.85, seed: 140, cross: 1.3 });
+    scribble(ctx, voidPoly, cr.x + cr.w * cr.n / 2, 388, cr.w * cr.n / 2, 12, { w: 1.2, alpha: 0.7, seed: 141, loops: 90, lr: 5 });
+    // 地面：消しゴムで明るくした岩に、石組みの線
+    scene.ground.forEach(([x0, x1], i) => {
+      const poly = groundPoly(scene, x0, x1);
+      paperFill(ctx, poly, 0.86);
+      hatchPoly(ctx, poly, { angle: 0.9, gap: 3.6, w: 1, alpha: 0.42, seed: 150 + i, cross: -1.6 });
+      drawCobbles(ctx, x0, x1, y, 160 + i);
+      pen(ctx, [[x0, y], [x1, y]], { w: 2.4, seed: 170 + i, step: 10 });
+      if (x0 > 0) pen(ctx, [[x0, y], [x0, H]], { w: 2.2, seed: 175 + i });
+      if (x1 < W) pen(ctx, [[x1, y], [x1, H]], { w: 2.2, seed: 176 + i });
+    });
+    // 光る石（地面の上）
+    for (const [cx, cy] of scene.crystals) drawCrystals(ctx, cx, cy);
+    // 天井
+    drawCeiling(ctx, scene);
+  }
+}
+
+function drawTear(ctx, x0, x1, y) {
+  const R = rng(120);
+  const edge = (ax, ay, bx, by, amp) => {
+    const pts = [], n = Math.round(Math.hypot(bx - ax, by - ay) / 3.5);
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      pts.push([ax + (bx - ax) * t + (ay === by ? 0 : (R() - 0.5) * amp * 2),
+                ay + (by - ay) * t + (ay === by ? (R() - 0.5) * amp * 2 : 0)]);
+    }
+    return pts;
+  };
+  const left = edge(x0 + 1, y + 1, x0 + 3, H + 2, 2.4);
+  const top = edge(x0 + 1, y + 2, x1 - 1, y + 2, 2.2).reverse();
+  const right = edge(x1 - 1, y + 1, x1 - 3, H + 2, 2.4);
+  const hole = left.concat([[x1 - 3, H + 2]], right.slice().reverse(), top);
+  ctx.save();
+  ctx.fillStyle = INK.desk; polyPath(ctx, hole); ctx.fill();
+  // 机の木目
+  ctx.globalAlpha = 0.25; ctx.strokeStyle = '#5a4c3e'; ctx.lineWidth = 1;
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath(); ctx.moveTo(x0, y + 10 + i * 9);
+    ctx.bezierCurveTo(x0 + 40, y + 6 + i * 9, x1 - 50, y + 16 + i * 9, x1, y + 9 + i * 9); ctx.stroke();
+  }
+  ctx.restore();
+  // 破れた縁：紙の繊維が白く毛羽立つ
+  for (const side of [left, right, top]) {
+    pen(ctx, side, { ink: '#fffdf5', w: 2.6, seed: side.length + side[0][0], step: 3, jit: 0.8, passes: 1 });
+    pen(ctx, side, { ink: INK.graphite, w: 0.8, alpha: 0.45, seed: side.length + 9, step: 3, jit: 0.6, passes: 1 });
+  }
+}
+
+function drawGrass(ctx, x0, x1, y, seed) {
+  const R = rng(seed);
+  ctx.save(); ctx.strokeStyle = INK.green; ctx.lineCap = 'round';
+  let x = x0;
+  while (x < x1) {
+    const tuft = R() < 0.18;
+    const n = tuft ? 3 : 1;
+    for (let k = 0; k < n; k++) {
+      const h = tuft ? 6 + R() * 6 : 2 + R() * 4, lean = (R() - 0.35) * 4 + (k - 1) * 2.5;
+      ctx.globalAlpha = 0.7 + R() * 0.3; ctx.lineWidth = 1 + R() * 0.5;
+      ctx.beginPath(); ctx.moveTo(x + k * 1.5, y + 2); ctx.quadraticCurveTo(x + k * 1.5 + lean * 0.3, y - h * 0.6, x + k * 1.5 + lean, y - h); ctx.stroke();
+    }
+    x += tuft ? 6 + R() * 6 : 2.5 + R() * 3;
+  }
+  ctx.restore();
+}
+
+function drawCobbles(ctx, x0, x1, y, seed) {
+  const R = rng(seed);
+  for (let row = 0, ry = y + 3; ry < H; row++, ry += 13) {
+    let x = x0 + 2 - (row % 2) * 10;
+    while (x < x1 - 4) {
+      const w = 18 + R() * 16, h = 11;
+      const a = Math.max(x, x0 + 2), b = Math.min(x + w, x1 - 2);
+      if (b - a > 6) {
+        const pts = [[a + 2, ry + R()], [b - 2, ry + R()], [b, ry + 3], [b - 1, ry + h - R()],
+                     [a + 2, ry + h], [a, ry + h - 3], [a, ry + 3]];
+        pen(ctx, pts, { w: 1.1, alpha: 0.75, closed: true, seed: seed * 31 + x * 3 + row, step: 6, jit: 0.5, passes: 1 });
+        hatchPoly(ctx, [[a + 3, ry + h - 4], [b - 2, ry + h - 4], [b - 2, ry + h - 1], [a + 3, ry + h - 1]],
+                  { angle: 0.9, gap: 2, w: 0.9, alpha: 0.5, seed: x + row });
+      }
+      x += w;
+    }
+  }
+}
+
+function drawCrystals(ctx, cx, cy) {
+  const shards = [[-9, 22, -0.35, 6], [0, 30, 0.05, 7], [9, 19, 0.45, 5.5]];
+  shards.forEach(([dx, h, rot, w], i) => {
+    const c = Math.cos(rot), s = Math.sin(rot);
+    const loc = [[-w, 0], [-w, -h * 0.75], [0, -h], [w, -h * 0.75], [w, 0]];
+    const pts = loc.map(([px, py]) => [cx + dx + px * c - py * s, cy + px * s + py * c]);
+    paperFill(ctx, pts, 1);
+    hatchPoly(ctx, [pts[2], pts[3], pts[4], [(pts[0][0] + pts[4][0]) / 2, cy]],
+              { ink: INK.blue, angle: 1.0, gap: 2.2, w: 1, alpha: 0.7, seed: cx + i });
+    pen(ctx, pts, { ink: INK.blue, w: 1.5, closed: true, seed: cx + i * 3, step: 5, jit: 0.4 });
+    pen(ctx, [pts[2], [(pts[0][0] + pts[4][0]) / 2, cy]], { ink: INK.blue, w: 1, passes: 1, seed: cx + i * 5 });
+  });
+  // きらり（短い線だけ。光の円は描かない）
+  for (const [a, r0, r1] of [[-2.2, 34, 40], [-1.2, 36, 44], [-0.4, 30, 35]]) {
+    pen(ctx, [[cx + Math.cos(a) * r0, cy - 10 + Math.sin(a) * r0], [cx + Math.cos(a) * r1, cy - 10 + Math.sin(a) * r1]],
+        { ink: INK.paper, w: 1.4, passes: 1, seed: cx + a * 10 });
+  }
+}
+
+function drawCeiling(ctx, scene) {
+  const R = rng(scene.seed + 9);
+  const spikes = [[62, 128, 13], [176, 108, 9], [262, 118, 11], [338, 134, 14], [470, 114, 10],
+                  [548, 104, 8], [642, 128, 13], [760, 112, 10]];
+  const bottom = [];
+  let x = W + 4;
+  const nextSpike = () => spikes.filter(s => s[0] < x).slice(-1)[0];
+  bottom.push([W + 4, 80]);
+  while (x > -4) {
+    const sp = nextSpike();
+    if (sp && x - 14 <= sp[0] + sp[2]) {
+      const [sx, tip, hw] = sp;
+      bottom.push([sx + hw, 82 + R() * 6], [sx + hw * 0.3, (tip + 86) / 2], [sx + 1, tip], [sx - hw * 0.4, (tip + 86) / 2 - 4], [sx - hw, 84 + R() * 6]);
+      x = sx - hw - 6;
+      spikes.splice(spikes.indexOf(sp), 1);
+    } else {
+      x -= 14 + R() * 10;
+      bottom.push([x, 76 + R() * 14]);
+    }
+  }
+  const poly = [[-4, 34], [W + 4, 34]].concat(bottom);
+  paperFill(ctx, poly, 0.25);
+  hatchPoly(ctx, poly, { angle: -0.9, gap: 1.9, w: 1.4, alpha: 0.8, seed: 180, cross: 1.5 });
+  hatchPoly(ctx, poly, { angle: 0.15, gap: 2.6, w: 1.2, alpha: 0.6, seed: 181 });
+  // 明かりが当たる縁だけ消しゴムで細く抜く
+  pen(ctx, bottom.map(p => [p[0], p[1] - 2.5]), { ink: INK.paper, w: 1.8, alpha: 0.55, seed: 182, step: 7, passes: 1 });
+  pen(ctx, bottom, { w: 2, seed: 183, step: 8 });
+  // しずく
+  pen(ctx, ellipsePts(339, 146, 1.8, 2.8, 5, 0.1, 0.4), { ink: INK.paper, w: 1.2, seed: 184, step: 2, passes: 1 });
+  // 天井と HUD の境
+  pen(ctx, [[0, 34], [W, 34]], { w: 1.2, alpha: 0.6, seed: 185, passes: 1, step: 20 });
+}
+
+/* ============================================================
+   drawPlatform：動く床・崩れる床
+   ============================================================ */
+function drawPlatform(ctx, x, y, w, h, kind, seed, v) {
+  v = v || 0;
+  if (kind === 'moving') {
+    const plank = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+    paperFill(ctx, plank, 1);
+    // 木目（青ボールペンの横線と節）
+    const R = rng(seed);
+    for (let i = 0; i < 3; i++) {
+      const gy = y + 3.5 + i * 3.5 + R();
+      pen(ctx, [[x + 3 + R() * 6, gy], [x + w * 0.5, gy + (R() - 0.5) * 1.5], [x + w - 4 - R() * 8, gy]],
+          { ink: INK.blue, w: 0.9, alpha: 0.6, passes: 1, seed: seed + i, step: 10, jit: 0.5 });
+    }
+    pen(ctx, ellipsePts(x + w * 0.62, y + h / 2, 4, 2.2, seed + 5, 0.1, 0.5), { ink: INK.blue, w: 1, seed: seed + 6, step: 2, passes: 1 });
+    penBox(ctx, x, y, w, h, { ink: INK.blue, w: 1.9, seed: seed + 10 + v * 4, jit: 0.6 });
+    // 釘
+    for (const nx of [x + 6, x + w - 6]) {
+      pen(ctx, [[nx - 1.6, y + h / 2 - 1.6], [nx + 1.6, y + h / 2 + 1.6]], { w: 1.2, passes: 1, seed: nx });
+      pen(ctx, [[nx + 1.6, y + h / 2 - 1.6], [nx - 1.6, y + h / 2 + 1.6]], { w: 1.2, passes: 1, seed: nx + 1 });
+    }
+    // 動きの線（左右に往復する）
+    const L = [[-26, 3, 14], [-30, 7, 20], [-24, 11, 12]];
+    L.forEach(([dx, dy, len], i) => {
+      const j = (v - 1) * 1.5;
+      pen(ctx, [[x + dx + j, y + dy], [x + dx + len + j, y + dy]], { w: 1.2, passes: 1, seed: seed + 20 + i, jit: 0.3 });
+      pen(ctx, [[x + w - dx - len - j, y + dy + 1], [x + w - dx - j, y + dy + 1]], { w: 1.2, passes: 1, seed: seed + 30 + i, jit: 0.3 });
+    });
+    // 小さな矢印（赤ペンではなく鉛筆）
+    pen(ctx, [[x + w / 2 - 14, y - 8], [x + w / 2 + 14, y - 8]], { w: 1.1, passes: 1, seed: seed + 40, alpha: 0.75 });
+    pen(ctx, [[x + w / 2 - 10, y - 11], [x + w / 2 - 14, y - 8], [x + w / 2 - 10, y - 5]], { w: 1.1, passes: 1, seed: seed + 41, step: 3, alpha: 0.75 });
+    pen(ctx, [[x + w / 2 + 10, y - 11], [x + w / 2 + 14, y - 8], [x + w / 2 + 10, y - 5]], { w: 1.1, passes: 1, seed: seed + 42, step: 3, alpha: 0.75 });
+  } else if (kind === 'crumble') {
+    const tile = [[x + 1, y], [x + w - 1, y], [x + w - 1, y + h], [x + 1, y + h]];
+    paperFill(ctx, tile, 0.88);
+    hatchPoly(ctx, tile, { angle: 0.9, gap: 3.4, w: 1, alpha: 0.4, seed: seed });
+    penBox(ctx, x + 1, y, w - 2, h, { w: 1.6, seed: seed + 3, over: 1.5, jit: 0.5 });
+    // ひび（赤ペン）
+    const R = rng(seed + 7);
+    // 稲妻形のひびと枝分かれ
+    const cx0 = x + 10 + R() * (w - 20), sg = R() < 0.5 ? 1 : -1;
+    const crack = [[cx0, y + 0.5], [cx0 + sg * 3.5, y + 5], [cx0 - sg * 1.5, y + 9], [cx0 + sg * 4, y + 13.5], [cx0 + sg * 1, y + 17]];
+    pen(ctx, crack, { ink: INK.red, w: 1.2, passes: 1, seed: seed + 8, step: 30, jit: 0.2, sharp: true });
+    pen(ctx, [crack[2], [crack[2][0] - sg * 5, crack[2][1] + 3], [crack[2][0] - sg * 7, crack[2][1] + 7]],
+        { ink: INK.red, w: 1, passes: 1, seed: seed + 9, step: 30, jit: 0.2, sharp: true });
+  } else if (kind === 'breaking') {
+    // 崩れかけ：3つに割れて少し落ち、かけらがこぼれる
+    const sh = (v % 2 ? 1 : -1) * 0.8;
+    const pieces = [
+      { pts: [[0, 0], [14, 0], [11, 9], [15, 20], [0, 20]], dx: -1 + sh, dy: 2, r: -0.05 },
+      { pts: [[14, 0], [27, 0], [24, 11], [26, 20], [15, 20], [11, 9]], dx: sh, dy: 5, r: 0.04 },
+      { pts: [[27, 0], [40, 0], [40, 20], [26, 20], [24, 11]], dx: 1.5 + sh, dy: 3, r: 0.08 },
+    ];
+    pieces.forEach((pc, i) => {
+      const c = Math.cos(pc.r), s = Math.sin(pc.r);
+      const pts = pc.pts.map(([px, py]) => [x + pc.dx + 20 + (px - 20) * c - (py - 10) * s, y + pc.dy + 10 + (px - 20) * s + (py - 10) * c]);
+      paperFill(ctx, pts, 0.7);
+      hatchPoly(ctx, pts, { angle: 0.9, gap: 3, w: 1, alpha: 0.45, seed: seed + i });
+      pen(ctx, pts, { w: 1.3, closed: true, seed: seed + i * 7 + v, step: 4, jit: 0.5, alpha: 0.85 });
+    });
+    // かけら
+    const R = rng(seed + 20 + v);
+    for (let i = 0; i < 5; i++) {
+      const fx = x + 6 + R() * 28, fy = y + h + 6 + R() * 12, s = 1.5 + R() * 2;
+      const tri = [[fx, fy - s], [fx + s, fy + s * 0.7], [fx - s, fy + s * 0.5]];
+      paperFill(ctx, tri, 0.9);
+      pen(ctx, tri, { w: 0.9, closed: true, passes: 1, seed: seed + 30 + i, step: 2, jit: 0.2 });
+    }
+    // ぷるぷる線（赤ペン）
+    for (const [sx, dir] of [[x - 4, -1], [x + w + 4, 1]]) {
+      pen(ctx, [[sx, y + 2], [sx + dir * 2.5, y + 7], [sx, y + 12]], { ink: INK.red, w: 1.2, passes: 1, seed: sx + v, step: 3, jit: 0.2 });
+      pen(ctx, [[sx + dir * 4, y + 4], [sx + dir * 6.5, y + 9], [sx + dir * 4, y + 14]], { ink: INK.red, w: 1.1, passes: 1, seed: sx + 3 + v, step: 3, jit: 0.2 });
+    }
+  }
+}
+
+/* ============================================================
+   drawPlayer：マントの子ども（28×40、x＝左端、feetY＝足）
+   ============================================================ */
+function drawPlayer(ctx, x, feetY, v, facing) {
+  v = v || 0; facing = facing || 1;
+  ctx.save();
+  ctx.translate(facing > 0 ? x : x + 28, feetY - 40);
+  ctx.scale(facing, 1);
+  const S = 900 + v * 37;
+  const bob = v === 1 ? -1 : 0;
+  // 走る線
+  for (const [ly, len] of [[13, 9], [21, 13], [29, 8]]) {
+    pen(ctx, [[-30, ly], [-30 + len, ly]], { w: 1.1, passes: 1, seed: S + ly, jit: 0.3, alpha: 0.75 });
+  }
+  // マント（赤ペンの斜線）
+  const flap = [0, -2.5, 2][v];
+  const cape = [[17, 20 + bob], [9, 19 + bob], [1, 20 + bob], [-8, 22 + flap * 0.5], [-16, 25 + flap], [-11, 28 + flap],
+                [-17, 31 + flap], [-9, 32 + flap], [-12, 36 + flap * 0.7], [-3, 33], [4, 31], [10, 26 + bob], [14, 23 + bob]];
+  paperFill(ctx, cape, 1);
+  hatchPoly(ctx, cape, { ink: INK.red, angle: 0.5, gap: 2.4, w: 1.1, alpha: 0.85, seed: S + 1 });
+  pen(ctx, cape, { ink: INK.red, w: 1.5, closed: true, seed: S + 2, step: 4, jit: 0.4 });
+  // 脚
+  const legs = [
+    { f: [[18, 33], [23, 36], [26, 40]], b: [[13, 33], [9, 36], [4, 37]] },
+    { f: [[17, 33], [19, 37], [19, 40]], b: [[14, 33], [11, 36], [8, 39]] },
+    { f: [[18, 33], [24, 35], [27, 39]], b: [[13, 33], [10, 37], [6, 40]] },
+  ][v];
+  for (const leg of [legs.b, legs.f]) {
+    pen(ctx, leg.map(p => [p[0], p[1] + (p[1] < 36 ? bob : 0)]), { w: 2.2, seed: S + leg[2][0], step: 3, jit: 0.3 });
+    const [fx, fy] = leg[2];
+    const shoe = ellipsePts(fx + 1.5, fy - 1, 3.4, 2, S + fx, 0.1, 0);
+    ctx.save(); ctx.fillStyle = INK.graphite; ctx.globalAlpha = 0.9; polyPath(ctx, shoe); ctx.fill(); ctx.restore();
+  }
+  // 半ズボン
+  const shorts = [[9.5, 30 + bob], [22, 30 + bob], [22, 34 + bob], [9.5, 34 + bob]];
+  hatchPoly(ctx, shorts, { angle: 1.2, gap: 1.6, w: 1.1, alpha: 0.85, seed: S + 3 });
+  // シャツ（青ボールペン）
+  const shirt = [[10, 20 + bob], [21, 20 + bob], [22.5, 31 + bob], [9, 31 + bob]];
+  paperFill(ctx, shirt, 1);
+  hatchPoly(ctx, shirt, { ink: INK.blue, angle: -1.1, gap: 2.1, w: 1, alpha: 0.75, seed: S + 4 });
+  pen(ctx, shirt, { ink: INK.blue, w: 1.4, closed: true, seed: S + 5, step: 4, jit: 0.35 });
+  // 腕
+  const arms = [
+    { n: [[20, 23], [24, 27], [28, 24]], f: [[12, 23], [8, 27], [5, 31]] },
+    { n: [[19, 23], [22, 28], [24, 31]], f: [[12, 23], [11, 28], [12, 31]] },
+    { n: [[20, 23], [17, 28], [13, 30]], f: [[12, 23], [16, 26], [19, 24]] },
+  ][v];
+  for (const arm of [arms.f, arms.n]) {
+    pen(ctx, arm.map(p => [p[0], p[1] + bob]), { w: 1.8, seed: S + arm[2][0] * 3, step: 3, jit: 0.3 });
+    pen(ctx, ellipsePts(arm[2][0], arm[2][1] + bob, 1.8, 1.8, S + 7, 0.1, 0.4), { w: 1.2, seed: S + 8, step: 2, passes: 1 });
+  }
+  // 頭
+  const head = ellipsePts(16, 11 + bob, 10, 9.6, S + 9, 0.05, 0);
+  paperFill(ctx, head, 1);
+  pen(ctx, ellipsePts(16, 11 + bob, 10, 9.6, S + 9, 0.05, 0.5), { w: 1.6, seed: S + 10, step: 4, jit: 0.35 });
+  // 髪：ぼさぼさ
+  const hair = [[6, 12], [5.5, 6], [8, 1], [10, -2], [13, 1], [15, -3], [18, 0], [22, -2], [23, 3], [26, 5],
+                [26.5, 8], [22, 6.5], [18, 7.5], [14, 6], [10, 8.5], [8, 12.5]].map(p => [p[0], p[1] + bob]);
+  hatchPoly(ctx, hair, { angle: 1.0, gap: 1.6, w: 1.1, alpha: 0.9, seed: S + 11, cross: 0.9 });
+  pen(ctx, hair, { w: 1.3, closed: true, seed: S + 12, step: 3, jit: 0.3 });
+  // 目・口・ほっぺ
+  ctx.save(); ctx.fillStyle = INK.graphite;
+  for (const ex of [18.5, 23]) {
+    ctx.beginPath(); ctx.ellipse(ex, 11.5 + bob, 1.3, 2.1, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = INK.paper;
+  for (const ex of [18.9, 23.4]) { ctx.beginPath(); ctx.arc(ex, 10.7 + bob, 0.55, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+  pen(ctx, [[19.5, 15.5 + bob], [21.5, 17.5 + bob], [24, 15.5 + bob]], { w: 1.2, passes: 1, seed: S + 13, step: 2, jit: 0.15 });
+  for (let i = 0; i < 3; i++) {
+    pen(ctx, [[20.2 + i * 1.2, 14.9 + bob], [20.9 + i * 1.2, 13.7 + bob]], { ink: INK.red, w: 0.8, passes: 1, seed: S + 14 + i, jit: 0, alpha: 0.8 });
+  }
+  // 後ろ足の土ぼこり
+  if (v !== 1) {
+    pen(ctx, ellipsePts(0, 37, 3, 2.2, S + 20, 0.2, 1.2), { w: 1, passes: 1, seed: S + 21, step: 2, alpha: 0.7 });
+    pen(ctx, ellipsePts(-5, 38.5, 2, 1.5, S + 22, 0.2, 1.2), { w: 0.9, passes: 1, seed: S + 23, step: 2, alpha: 0.6 });
+  }
+  ctx.restore();
+}
+
+/* ============================================================
+   drawEnemy：毛玉（歩く敵 30×26）とハチ（26×22）。どちらも左向き。
+   ============================================================ */
+function drawEnemy(ctx, kind, x, y, v) {
+  v = v || 0;
+  const S = 2000 + v * 31 + (kind === 'bee' ? 500 : 0);
+  ctx.save();
+  if (kind === 'walker') {
+    ctx.translate(x, y - 26); // y は足
+    // 足
+    const fo = [[0, 1, -1], [1, -1, 0], [-1, 0, 1]][v];
+    [[8, 23], [15, 24], [22, 23]].forEach(([fx, fy], i) => {
+      pen(ctx, [[fx, fy], [fx + fo[i], 25.5]], { w: 1.6, passes: 1, seed: S + i, jit: 0.1 });
+      ctx.save(); ctx.fillStyle = INK.graphite; ctx.beginPath(); ctx.ellipse(fx + fo[i] - 1, 25.6, 2.4, 1.2, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    });
+    // 体：毛玉
+    const body = ellipsePts(16, 13.5, 14.5, 11, S + 3, 0.09, 0);
+    paperFill(ctx, body, 1);
+    scribble(ctx, body, 16, 13.5, 14, 10.5, { w: 1, alpha: 0.5, seed: S + 4, loops: 34, lr: 3 });
+    // 毛のはね
+    const R = rng(S + 5);
+    for (let i = 0; i < 16; i++) {
+      const a = -Math.PI * 0.95 + i / 15 * Math.PI * 1.25 + (R() - 0.5) * 0.15;
+      const rx = 14.5, ry = 11;
+      const px = 16 + Math.cos(a) * rx, py = 13.5 + Math.sin(a) * ry;
+      pen(ctx, [[px, py], [px + Math.cos(a) * (2 + R() * 2.5), py + Math.sin(a) * (2 + R() * 2.5)]], { w: 1, passes: 1, seed: S + 6 + i, jit: 0 });
+    }
+    pen(ctx, ellipsePts(16, 13.5, 14.5, 11, S + 3, 0.09, 0.4), { w: 1.6, seed: S + 7, step: 4, jit: 0.4 });
+    // 触角
+    pen(ctx, [[21, 3.5], [23, -1], [26, -3], [27.5, -1], [26, 0.5]], { w: 1.2, seed: S + 8, step: 2, jit: 0.2, passes: 1 });
+    // 目（左を見る）
+    for (const [ex, ey, r] of [[8, 11, 4.6], [17, 10, 4.1]]) {
+      const e = ellipsePts(ex, ey, r, r * 1.1, S + ex, 0.05, 0);
+      paperFill(ctx, e, 1);
+      pen(ctx, ellipsePts(ex, ey, r, r * 1.1, S + ex, 0.05, 0.4), { w: 1.2, seed: S + ex + 1, step: 2.5, jit: 0.2 });
+      ctx.save(); ctx.fillStyle = INK.graphite; ctx.beginPath(); ctx.arc(ex - 1.8, ey + 1, 1.9, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    }
+    // 怒り眉（赤ペン）と歯
+    pen(ctx, [[3, 4.5], [10.5, 7]], { ink: INK.red, w: 1.8, seed: S + 9, jit: 0.2 });
+    pen(ctx, [[13.5, 6], [20.5, 3]], { ink: INK.red, w: 1.8, seed: S + 10, jit: 0.2 });
+    const mouth = [[4, 19], [6, 17.3], [8, 19], [10, 17.3], [12, 19], [14, 17.6]];
+    paperFill(ctx, [[4, 17], [14, 17], [14, 19.5], [4, 19.5]], 1);
+    pen(ctx, mouth, { w: 1.1, seed: S + 11, step: 2, jit: 0.1, passes: 1 });
+    pen(ctx, [[3.5, 17], [14.5, 17.2]], { w: 1, seed: S + 12, passes: 1, jit: 0.2 });
+  } else {
+    // ハチ：中心 (x, y)
+    ctx.translate(x - 13, y - 11);
+    // 羽（青ボールペン）：はばたきで角度が変わる
+    const flap = [-0.5, 0.1, -0.2][v];
+    for (const [wx, wy, r] of [[15, 3, 0], [20, 3.5, 0.5]]) {
+      const wing = ellipsePts(wx, wy - 2, 6.5, 3.6, S + wx, 0.05, 0, -1.2 + flap + r);
+      paperFill(ctx, wing, 0.95);
+      pen(ctx, ellipsePts(wx, wy - 2, 6.5, 3.6, S + wx, 0.05, 0.4, -1.2 + flap + r), { ink: INK.blue, w: 1.2, seed: S + wx + 1, step: 2.5, jit: 0.2 });
+    }
+    // はばたきの線
+    pen(ctx, [[10, -5], [13, -9], [17, -10]], { ink: INK.paper, w: 1.1, passes: 1, seed: S + 30, step: 2, jit: 0.1 });
+    pen(ctx, [[22, -9], [26, -7], [28, -3]], { ink: INK.paper, w: 1.1, passes: 1, seed: S + 31, step: 2, jit: 0.1 });
+    // 針
+    const sting = [[24, 13.5], [30, 15.5], [24, 17]];
+    paperFill(ctx, sting, 1);
+    pen(ctx, sting, { w: 1.2, closed: true, passes: 1, seed: S + 32, step: 2, jit: 0.1 });
+    // 胴：蛍光ペンの黄色と鉛筆のしま
+    const body = ellipsePts(14, 14, 11, 7.5, S + 33, 0.04, 0, -0.08);
+    paperFill(ctx, body, 1);
+    hatchPoly(ctx, body, { ink: INK.marker, angle: -1.1, gap: 2.2, w: 2.6, alpha: 0.95, seed: S + 34, jit: 0.3, over: 0 });
+    ctx.save(); polyPath(ctx, body); ctx.clip();
+    for (const sx of [12, 18.5]) {
+      hatchPoly(ctx, [[sx, 4], [sx + 3.6, 4], [sx + 3.6, 24], [sx, 24]], { angle: 1.3, gap: 1.4, w: 1.2, alpha: 0.95, seed: S + sx });
+    }
+    ctx.restore();
+    pen(ctx, ellipsePts(14, 14, 11, 7.5, S + 33, 0.04, 0.4, -0.08), { w: 1.5, seed: S + 35, step: 3, jit: 0.3 });
+    // 頭
+    const head = ellipsePts(4, 12.5, 4.8, 4.6, S + 36, 0.05, 0);
+    paperFill(ctx, head, 1);
+    pen(ctx, ellipsePts(4, 12.5, 4.8, 4.6, S + 36, 0.05, 0.4), { w: 1.4, seed: S + 37, step: 2, jit: 0.2 });
+    ctx.save(); ctx.fillStyle = INK.graphite; ctx.beginPath(); ctx.arc(2.3, 12.2, 1.6, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    pen(ctx, [[0.2, 8.6], [4.5, 10]], { ink: INK.red, w: 1.5, passes: 1, seed: S + 38, jit: 0.1 });
+    // 触角
+    pen(ctx, [[3, 8], [1, 3], [-2, 1]], { w: 1.1, passes: 1, seed: S + 39, step: 2, jit: 0.1 });
+    pen(ctx, [[5.5, 8], [5, 3], [3, 0]], { w: 1.1, passes: 1, seed: S + 40, step: 2, jit: 0.1 });
+  }
+  ctx.restore();
+}
+
+/* ============================================================
+   drawHeart：赤ペンのハート（full / empty / pickup）
+   ============================================================ */
+function heartPts(cx, cy, size, rot) {
+  const s = size / 34, pts = [], c = Math.cos(rot), sn = Math.sin(rot);
+  for (let i = 0; i < 30; i++) {
+    const t = i / 30 * Math.PI * 2;
+    const hx = 16 * Math.pow(Math.sin(t), 3) * s;
+    const hy = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) * s - 1.5 * s;
+    pts.push([cx + hx * c - hy * sn, cy + hx * sn + hy * c]);
+  }
+  return pts;
+}
+function drawHeart(ctx, cx, cy, size, state, seed) {
+  seed = seed || 1;
+  const R = rng(seed);
+  const rot = (R() - 0.5) * 0.25;
+  const pts = heartPts(cx, cy, size, rot);
+  if (state === 'empty') {
+    paperFill(ctx, pts, 0.6);
+    pen(ctx, pts, { w: 1.3, closed: true, seed: seed + 1, step: 3, jit: 0.3, dash: [2.5, 2.5], alpha: 0.8 });
+    return;
+  }
+  paperFill(ctx, pts, 1);
+  hatchPoly(ctx, pts, { ink: INK.red, angle: -0.6 + R() * 0.2, gap: Math.max(1.6, size / 11), w: size > 20 ? 1.4 : 1.1,
+                        alpha: 0.9, seed: seed + 2, over: 1.2 });
+  pen(ctx, pts.concat([pts[0], pts[1]]), { ink: INK.red, w: size > 20 ? 2 : 1.6, seed: seed + 3, step: 3, jit: 0.35 });
+  if (state === 'pickup') {
+    // つやは消しゴムの細い線、まわりにきらきらの短い線
+    pen(ctx, [[cx - size * 0.28, cy - size * 0.18], [cx - size * 0.2, cy - size * 0.3]], { ink: INK.paper, w: 2, passes: 1, seed: seed + 4 });
+    for (const [a, r0, r1] of [[-2.5, 0.75, 1.0], [-1.6, 0.72, 0.95], [-0.5, 0.78, 1.02], [0.6, 0.8, 0.98]]) {
+      pen(ctx, [[cx + Math.cos(a) * size * r0, cy + Math.sin(a) * size * r0], [cx + Math.cos(a) * size * r1, cy + Math.sin(a) * size * r1]],
+          { w: 1.3, passes: 1, seed: seed + a * 10, jit: 0.1 });
+    }
+  }
+}
+
+/* ============================================================
+   drawFlag：中間地点（通ったあと＝緑の旗に赤ペンのチェック）
+   ============================================================ */
+function drawFlag(ctx, x, top, bottom, state, v) {
+  v = v || 0;
+  const S = 3000 + v * 17;
+  // 根元の土盛り
+  pen(ctx, [[x - 9, bottom], [x - 4, bottom - 4], [x + 4, bottom - 4.5], [x + 10, bottom]], { w: 1.4, seed: S, step: 3, jit: 0.3 });
+  // 棒
+  pen(ctx, [[x - 1.5, bottom - 3], [x - 1.5, top + 2]], { w: 1.4, seed: S + 1, step: 12, jit: 0.4 });
+  pen(ctx, [[x + 1.5, bottom - 3], [x + 1.5, top + 2]], { w: 1.4, seed: S + 2, step: 12, jit: 0.4 });
+  pen(ctx, ellipsePts(x, top, 3, 3, S + 3, 0.1, 0.6), { w: 1.4, seed: S + 4, step: 2, jit: 0.2 });
+  // 旗：ゆれ
+  const w1 = [0, 2, -1.5][v], w2 = [1.5, -1, 2][v];
+  const flag = [[x + 2, top + 4], [x + 16, top + 6 + w1], [x + 28, top + 4 + w2], [x + 40, top + 13 + w1 * 0.5],
+                [x + 27, top + 21 + w2], [x + 15, top + 25 + w1], [x + 2, top + 28]];
+  paperFill(ctx, flag, 1);
+  if (state === 'passed') {
+    hatchPoly(ctx, flag, { ink: INK.green, angle: -0.8, gap: 2.4, w: 1.3, alpha: 0.85, seed: S + 5 });
+    pen(ctx, flag, { ink: INK.green, w: 1.6, closed: true, seed: S + 6, step: 4, jit: 0.4 });
+    // チェック（赤ペン、旗からはみ出す）
+    pen(ctx, [[x + 9, top + 14], [x + 15, top + 21], [x + 31, top - 2]], { ink: INK.red, w: 2.6, seed: S + 7, step: 3, jit: 0.3 });
+  } else {
+    pen(ctx, flag, { w: 1.4, closed: true, seed: S + 6, step: 4, jit: 0.4 });
+  }
+}
+
+/* ============================================================
+   drawHUD：ノートの見出し欄に手書き
+   ============================================================ */
+function drawHUD(ctx, hud, seed) {
+  seed = seed || 1;
+  // 見出しの罫線（定規なしで引いた青い線）
+  pen(ctx, [[6, 33], [400, 32.5], [794, 33.5]], { ink: INK.blue, w: 1.3, seed: seed, step: 30, jit: 0.5 });
+  // HP
+  for (let i = 0; i < hud.max; i++) {
+    drawHeart(ctx, 18 + i * 24, 16.5, 19, i < hud.hp ? 'full' : 'empty', seed + 10 + i * 7);
+  }
+  // 面・挑戦・時間
+  handText(ctx, hud.text, 22 + hud.max * 24, 23.5, { size: 17, seed: seed + 3, rot: -0.025 });
+  // ポーズのボタン（x 722〜796）
+  const bx = 722, by = 5, bw = 74, bh = 23;
+  paperFill(ctx, [[bx, by], [bx + bw, by], [bx + bw, by + bh], [bx, by + bh]], 1);
+  penBox(ctx, bx, by, bw, bh, { ink: INK.blue, w: 1.5, seed: seed + 20, over: 2.2, jit: 0.5 });
+  for (const px of [bx + 11, bx + 18.5]) {
+    pen(ctx, [[px, by + 5.5], [px + 0.4, by + 17.5]], { w: 3, seed: px, step: 4, jit: 0.3, off: 0.6 });
+  }
+  handText(ctx, 'ポーズ', bx + 27, by + 16.5, { size: 13.5, seed: seed + 30, rot: 0.02 });
+}
+
+/* ============================================================
+   組み立て：静かな部分は1回だけ描き、動く部分は3枚（線のゆらぎ）を作っておく
+   ============================================================ */
+const BOIL = 3;           // 線のゆらぎの枚数
+const BOIL_MS = 125;      // 1枚を出す時間（8 コマ/秒の手描きアニメ）
+
+function buildScene(scene) {
+  const st = mk(W, H), g = st.getContext('2d');
+  drawSky(g, scene);
+  drawFar(g, scene);
+  drawGround(g, scene);
+  if (scene.crumble) {
+    const cr = scene.crumble;
+    for (let i = 0; i < cr.n; i++) {
+      if (i !== cr.breaking) drawPlatform(g, cr.x + i * cr.w, cr.y, cr.w, cr.h, 'crumble', 400 + i * 11, 0);
+    }
+  }
+  const boil = [], bob = [];
+  for (let v = 0; v < BOIL; v++) {
+    const c = mk(W, H), b = c.getContext('2d');
+    (scene.torches || []).forEach(([tx, ty]) => drawFlame(b, tx, ty, v));
+    (scene.flags || []).forEach(([fx, t, bt, state]) => drawFlag(b, fx, t, bt, state, v));
+    (scene.movers || []).forEach(([mx, my, mw, mh]) => drawPlatform(b, mx, my, mw, mh, 'moving', 500, v));
+    if (scene.crumble) {
+      const cr = scene.crumble;
+      drawPlatform(b, cr.x + cr.breaking * cr.w, cr.y, cr.w, cr.h, 'breaking', 600, v);
+    }
+    (scene.walkers || []).forEach(([ex, ey]) => drawEnemy(b, 'walker', ex, ey, v));
+    drawPlayer(b, scene.player[0], scene.player[1], v, 1);
+    boil.push(c);
+    // ふわふわ動くもの（ハート・ハチ）は小さな絵にして、毎フレームずらして置く
+    const s = [];
+    (scene.pickups || []).forEach(([hx, hy]) => {
+      const sc = mk(48, 48), sg = sc.getContext('2d');
+      sg.translate(24 - hx, 24 - hy); drawHeart(sg, hx, hy, 24, 'pickup', 700 + v * 3);
+      s.push({ c: sc, x: hx - 24, y: hy - 24, amp: 1.6, per: 900 });
+    });
+    (scene.bees || []).forEach(([bx, by]) => {
+      const sc = mk(56, 52), sg = sc.getContext('2d');
+      sg.translate(28 - bx, 28 - by); drawEnemy(sg, 'bee', bx, by, v);
+      s.push({ c: sc, x: bx - 28, y: by - 28, amp: 2, per: 600 });
+    });
+    bob.push(s);
+  }
+  const hud = mk(W, 40);
+  drawHUD(hud.getContext('2d'), scene.hud, scene.seed + 77);
+  return { st, boil, bob, hud };
+}
+
+function renderFrame(ctx, built, t) {
+  const v = Math.floor(t / BOIL_MS) % BOIL;
+  ctx.drawImage(built.st, 0, 0);
+  ctx.drawImage(built.boil[v], 0, 0);
+  for (const s of built.bob[v]) {
+    ctx.drawImage(s.c, s.x, Math.round(s.y + Math.sin(t / s.per * Math.PI * 2) * s.amp));
+  }
+  ctx.drawImage(built.hud, 0, 0);
+}
+
+/* ============================================================
+   起動
+   ============================================================ */
+(function main() {
+  const ul = document.getElementById('inks');
+  for (const [k, name] of INK_LABEL) {
+    const li = document.createElement('li');
+    li.innerHTML = '<i style="background:' + INK[k] + '"></i><span>' + name + '</span><code>' + INK[k] + '</code>';
+    ul.appendChild(li);
+  }
+  PAPER = makePaper();
+  const scenes = [
+    { ctx: document.getElementById('c1').getContext('2d'), built: buildScene(SCENE1) },
+    { ctx: document.getElementById('c2').getContext('2d'), built: buildScene(SCENE2) },
+  ];
+  function loop(now) {
+    for (const s of scenes) renderFrame(s.ctx, s.built, now);
+    requestAnimationFrame(loop);
+  }
+  for (const s of scenes) renderFrame(s.ctx, s.built, 0);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
