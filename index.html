@@ -436,9 +436,10 @@ function buildArena(end) {
   let { x, y } = end;
   const F = ST.tower ? y : 360;
   if (!ST.tower && y !== 360) { g(x, x + 300, y); x += 300; }
-  const L = x + 500, R = L + 900;
+  const L = x + 1100, R = L + 900;                               // 手前の床は敵なし。撃つ敵（届くのは560px）からも離す
   arena = { L, R, F };
   g(x, L, F); heart(L - 250);
+  checkpoints.push(x + 650);                                      // ボス前の中間地点（ボスにやられたらここから）
   ARENA_BUILD[ST.boss](arena);
   solids.push({ x: R, y: F - 1500, w: 400, h: 3000 });            // 右の壁
   Object.assign(gate, { x: L - 40, y: F - 1500, w: 40, h: 1500, active: false });
