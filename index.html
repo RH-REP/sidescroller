@@ -21,8 +21,14 @@
     color:#fff; font-size:30px; display:flex; align-items:center; justify-content:center; }
   .btn.on { background:rgba(255,255,255,0.5); transform:scale(0.94); }
   .btn.hide { display:none; }
-  #bL { left:calc(16px + env(safe-area-inset-left)); bottom:24px; width:88px; height:88px; border-radius:20px; }
-  #bR { left:calc(110px + env(safe-area-inset-left)); bottom:24px; width:88px; height:88px; border-radius:20px; }
+  /* 移動はスティック：左側（STICK_ZONE）のどこを押してもよく、押した所から左右になぞる */
+  #stick, #knob { position:absolute; border-radius:50%; pointer-events:none; transform:translate(-50%,-50%); }
+  #stick { width:120px; height:120px; border:2px solid rgba(255,255,255,0.35); background:rgba(255,255,255,0.08);
+    left:calc(90px + env(safe-area-inset-left)); top:calc(100% - 90px); }
+  #knob { width:56px; height:56px; background:rgba(255,255,255,0.35); border:2px solid rgba(255,255,255,0.6); display:none; }
+  #pad.stickOn #knob { display:block; }
+  #pad.stickOn #stick { background:rgba(255,255,255,0.14); }
+  #pad.menu #stick, #pad.menu #knob { display:none; }
   #bA { right:calc(120px + env(safe-area-inset-right)); bottom:20px; width:92px; height:92px; }
   #bJ { right:calc(16px + env(safe-area-inset-right)); bottom:70px; width:96px; height:96px; }
   #pad.menu .btn { display:none; }
@@ -56,8 +62,7 @@
 <body>
 <canvas id="game" width="800" height="400"></canvas>
 <div id="pad">
-  <div class="btn" id="bL" data-key="left">◀</div>
-  <div class="btn" id="bR" data-key="right">▶</div>
+  <div id="stick"></div><div id="knob"></div>
   <div class="btn" id="bA" data-key="attack">⚔</div>
   <div class="btn" id="bJ" data-key="jump">⤒</div>
 </div>
@@ -656,9 +661,21 @@ if (isTouch) enableTouchUI();
 const touchUI = () => pad.classList.contains('show');
 const pointers = new Map();
 function keyAt(e) { const el = document.elementFromPoint(e.clientX, e.clientY); return el && el.dataset ? el.dataset.key || null : null; }
+// スティック：左側を押した所が中心。中心から STICK_DEAD より右（左）へずらすと右（左）へ動く。STICK_R より先へずらすと中心が指についてくる
+const STICK_ZONE = 0.45, STICK_DEAD = 12, STICK_R = 60;
+const stickEl = document.getElementById('stick'), knobEl = document.getElementById('knob');
+let stick = null;                                     // { id, ox, oy, x }
+function placeStick() {
+  pad.classList.toggle('stickOn', !!stick);
+  if (!stick) { stickEl.style.left = stickEl.style.top = ''; return; }   // 離したら左下の定位置へ
+  stickEl.style.left = stick.ox + 'px'; stickEl.style.top = stick.oy + 'px';
+  knobEl.style.left = (stick.ox + Math.max(-STICK_R, Math.min(STICK_R, stick.x - stick.ox))) + 'px'; knobEl.style.top = stick.oy + 'px';
+}
 function syncTouch() {
   const now = { left: false, right: false, jump: false, attack: false };
   for (const k of pointers.values()) if (k in now) now[k] = true;
+  if (stick && !pointers.has(stick.id)) { stick = null; placeStick(); }   // ポーズなどで指を全部離した扱いになった
+  if (stick) { const dx = stick.x - stick.ox; if (dx > STICK_DEAD) now.right = true; else if (dx < -STICK_DEAD) now.left = true; }
   for (const k in now) { edge(k, now[k], tc[k] || kb[k]); tc[k] = now[k]; }
   pad.querySelectorAll('.btn').forEach(b => b.classList.toggle('on', !!now[b.dataset.key]));
 }
@@ -667,15 +684,26 @@ pad.addEventListener('pointerdown', e => {
   if (handleScreenTap(e)) return;
   if (state !== 'playing') return;
   try { pad.setPointerCapture(e.pointerId); } catch (_) {}
-  pointers.set(e.pointerId, keyAt(e)); syncTouch();
+  const k = keyAt(e);
+  if (!k && !stick && e.clientX < innerWidth * STICK_ZONE) { stick = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX }; pointers.set(e.pointerId, 'stick'); placeStick(); }
+  else pointers.set(e.pointerId, k);
+  syncTouch();
 });
 pad.addEventListener('pointermove', e => {
   if (!pointers.has(e.pointerId)) return;
+  if (stick && e.pointerId === stick.id) {
+    stick.x = e.clientX; const dx = stick.x - stick.ox;
+    if (Math.abs(dx) > STICK_R) stick.ox = stick.x - Math.sign(dx) * STICK_R;   // 中心が指についてくる（逆へすぐ切り替えられる）
+    placeStick(); syncTouch(); return;
+  }
   const k = keyAt(e); if (k !== pointers.get(e.pointerId)) { pointers.set(e.pointerId, k); syncTouch(); }
 });
 ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev =>
-  pad.addEventListener(ev, e => { if (pointers.delete(e.pointerId)) syncTouch(); }));
-addEventListener('blur', () => { pause(); pointers.clear(); syncTouch(); for (const k in kb) kb[k] = false; });
+  pad.addEventListener(ev, e => {
+    if (stick && e.pointerId === stick.id) { stick = null; placeStick(); }
+    if (pointers.delete(e.pointerId)) syncTouch();
+  }));
+addEventListener('blur', () => { pause(); pointers.clear(); stick = null; placeStick(); syncTouch(); for (const k in kb) kb[k] = false; });
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
 addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') enableTouchUI(); handleScreenTap(e); });
@@ -1638,7 +1666,7 @@ function drawButtons() {
 }
 function controlRows() {
   const t = touchUI();
-  const rows = t ? [['◀ ▶', '移動（指を滑らせて左右を切り替え）'], ['⤒', 'ジャンプ（長押しで高く・ばねも高く）']]
+  const rows = t ? [['左側', '移動（押した所から左右になぞる）'], ['⤒', 'ジャンプ（長押しで高く・ばねも高く）']]
                  : [['← → / A D', '移動'], ['Space / Z / W / ↑', 'ジャンプ（長押しで高く・ばねも高く）']];
   if (SWORD) rows.push(t ? ['⚔', '剣（弾を斬れる・壁を壊せる）'] : ['X / J / K', '剣（弾を斬れる・壁を壊せる）']);
   rows.push(t ? ['⏸', 'ポーズ / 再開'] : ['P / Esc', 'ポーズ / 再開']);
@@ -1674,7 +1702,7 @@ function drawMenu() {
   ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
   if (state === 'title') {
     ctx.font = 'bold 44px sans-serif'; ctx.fillText('横スクロール 10ステージ', VW / 2, 140);
-    ctx.font = '18px sans-serif'; ctx.fillText(touchUI() ? '◀ ▶ 移動　⤒ ジャンプ　' : '←→ 移動　Space ジャンプ　', VW / 2, 200);
+    ctx.font = '18px sans-serif'; ctx.fillText(touchUI() ? '左側をなぞって移動　⤒ ジャンプ　' : '←→ 移動　Space ジャンプ　', VW / 2, 200);
     ctx.fillText(touchUI() ? '遊んでいる間は右上の ⏸ でポーズ・操作説明' : '遊んでいる間は P / Esc でポーズ・操作説明', VW / 2, 230);
     ctx.font = 'bold 22px sans-serif'; ctx.fillText('タップ / Space でスタート', VW / 2, 300);
     drawButtons(); ctx.textAlign = 'center';
