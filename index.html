@@ -21,7 +21,7 @@
     color:#fff; font-size:30px; display:flex; align-items:center; justify-content:center; }
   .btn.on { background:rgba(255,255,255,0.5); transform:scale(0.94); }
   .btn.hide { display:none; }
-  /* 移動はスティック：左側（STICK_ZONE）のどこを押してもよく、押した所から左右になぞる */
+  /* 移動はスティック：中心は左下の輪で動かない。左側（STICK_ZONE）のどこを押してもよく、輪の中心より右なら右、左なら左 */
   #stick, #knob { position:absolute; border-radius:50%; pointer-events:none; transform:translate(-50%,-50%); }
   #stick { width:120px; height:120px; border:2px solid rgba(255,255,255,0.35); background:rgba(255,255,255,0.08);
     left:calc(90px + env(safe-area-inset-left)); top:calc(100% - 90px); }
@@ -713,14 +713,13 @@ if (isTouch) enableTouchUI();
 const touchUI = () => pad.classList.contains('show');
 const pointers = new Map();
 function keyAt(e) { const el = document.elementFromPoint(e.clientX, e.clientY); return el && el.dataset ? el.dataset.key || null : null; }
-// スティック：左側を押した所が中心。中心から STICK_DEAD より右（左）へずらすと右（左）へ動く。STICK_R より先へずらすと中心が指についてくる
+// スティック：中心は左下の輪（動かない）。左側のどこを押してもよく、輪の中心から STICK_DEAD より右（左）なら右（左）へ動く
 const STICK_ZONE = 0.45, STICK_DEAD = 12, STICK_R = 60;
 const stickEl = document.getElementById('stick'), knobEl = document.getElementById('knob');
 let stick = null;                                     // { id, ox, oy, x }
 function placeStick() {
   pad.classList.toggle('stickOn', !!stick);
-  if (!stick) { stickEl.style.left = stickEl.style.top = ''; return; }   // 離したら左下の定位置へ
-  stickEl.style.left = stick.ox + 'px'; stickEl.style.top = stick.oy + 'px';
+  if (!stick) return;
   knobEl.style.left = (stick.ox + Math.max(-STICK_R, Math.min(STICK_R, stick.x - stick.ox))) + 'px'; knobEl.style.top = stick.oy + 'px';
 }
 function syncTouch() {
@@ -737,15 +736,15 @@ pad.addEventListener('pointerdown', e => {
   if (state !== 'playing') return;
   try { pad.setPointerCapture(e.pointerId); } catch (_) {}
   const k = keyAt(e);
-  if (!k && !stick && e.clientX < innerWidth * STICK_ZONE) { stick = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX }; pointers.set(e.pointerId, 'stick'); placeStick(); }
+  if (!k && !stick && e.clientX < innerWidth * STICK_ZONE) { const r = stickEl.getBoundingClientRect(), ok = r.width > 0;   // 輪が見えていなければ、CSS の定位置（左 90px・下 90px）
+    stick = { id: e.pointerId, ox: ok ? r.left + r.width / 2 : 90, oy: ok ? r.top + r.height / 2 : innerHeight - 90, x: e.clientX }; pointers.set(e.pointerId, 'stick'); placeStick(); }
   else pointers.set(e.pointerId, k);
   syncTouch();
 });
 pad.addEventListener('pointermove', e => {
   if (!pointers.has(e.pointerId)) return;
   if (stick && e.pointerId === stick.id) {
-    stick.x = e.clientX; const dx = stick.x - stick.ox;
-    if (Math.abs(dx) > STICK_R) stick.ox = stick.x - Math.sign(dx) * STICK_R;   // 中心が指についてくる（逆へすぐ切り替えられる）
+    stick.x = e.clientX;
     placeStick(); syncTouch(); return;
   }
   const k = keyAt(e); if (k !== pointers.get(e.pointerId)) { pointers.set(e.pointerId, k); syncTouch(); }
