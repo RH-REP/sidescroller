@@ -467,11 +467,16 @@ const ARENA_BUILD = {
   demon(A) { g(A.L, A.R, A.F); plat(A.L + 60, A.L + 200, A.F - 120); plat(A.R - 200, A.R - 60, A.F - 120); },
 };
 
+// 中間地点の前後 CP_ZONE px に立っていて、敵が 250px 以内に来ない・弾が届かないように、届く範囲が掛かる敵は置かない（tests/cpsafe.js）
+// 届く範囲：撃つ敵は 560px で撃つ。ハチは 260px で狙って突っ込む。イノシシは見回りの外へ 120px 走る。ほかは見回りの範囲（range）
+const CP_ZONE = 150;
+const cpReach = d => 250 + ({ shoot: 600, bee: 560 }[d.type] || ((d.range || 110) + (d.type === 'boar' ? 180 : 40)));
 function loadStage(n) {
   STAGE = n; ST = STAGES[n - 1]; MAX_HP = MAX_HP_BY_STAGE[n - 1] * hpScale(); SWORD = !!ST.sword;
   solids = []; movers = []; enemyDefs = []; heartDefs = []; checkpoints = []; worldTop = 0; chunkLog = [];
   const end = n === 1 ? buildStage1() : buildGenerated();
   buildArena(end);
+  enemyDefs = enemyDefs.filter(d => checkpoints.every(c => Math.abs(d.sx - c) - CP_ZONE > cpReach(d)));   // 中間地点の前後には敵も弾も来ない
   if (n <= 4) enemyDefs.forEach(d => { d.hp = 1; });   // 剣のない面は1回踏めば倒れる
   for (const s of solids) if (s.kind === 'crumble' || s.kind === 'break') s.orig = { ...s };
   document.getElementById('bA').classList.toggle('hide', !SWORD);
