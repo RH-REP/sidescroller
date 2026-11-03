@@ -7,6 +7,7 @@
 - 仕様・コードの作り・分かっている問題・テストの走らせ方は [docs/HANDOFF.md](docs/HANDOFF.md)。
 - 面ごとのギミックの単位（ユニット）とデザインの意図は [stages/](stages/) の CSV（`stage01.csv`〜`stage10.csv`）。
 - ボスを倒すと宝（鍵のかけら・剣・王冠）が出て、取るとクリア。設計の資料は [docs/design/](docs/design/)。
+- 見た目は「切り絵と和紙」：染め紙を切って重ねた絵。候補と比べたページは [docs/design/art/](docs/design/art/)。
 
 ## 操作
 

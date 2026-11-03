@@ -1,6 +1,6 @@
 const ctx=new Proxy({measureText:()=>({width:0})},{get:(o,k)=>k in o?o[k]:()=>{},set:(o,k,v)=>(o[k]=v,true)});
 const mk=()=>({getContext:()=>ctx,style:{},addEventListener(){},classList:{add(){},toggle(){},contains:()=>false},querySelectorAll:()=>[],dataset:{},getBoundingClientRect:()=>({left:0,top:0,width:800,height:400})});
-const el=mk();global.window=global;global.innerWidth=800;global.innerHeight=400;
+const el=mk();global.window=global;global.NO_ART=true;global.innerWidth=800;global.innerHeight=400;
 global.document={getElementById:()=>el,body:el,documentElement:el,elementFromPoint:()=>null,addEventListener(){},hidden:false};
 global.navigator={maxTouchPoints:0};global.screen={};global.performance={now:()=>Date.now()};
 global.addEventListener=()=>{};let loop;global.requestAnimationFrame=f=>{loop=f};
