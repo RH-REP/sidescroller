@@ -201,38 +201,27 @@ const FALL_DAMAGE = 2, INVINCIBLE = 60, DT = 1 / 60;
 const SWING_TIME = 16, SWING_COOLDOWN = 20, SWORD_REACH = 54;
 const SPRING_LOW = -15.5, SPRING_HIGH = -19;            // ばね：ジャンプ長押しで高く
 const MAX_HP_BY_STAGE = [3, 4, 5, 6, 7, 7, 8, 9, 9, 10];
-const SECONDS_PER_CHUNK = 10;                           // 地形の部品1つ ≒ 10秒
 
-const ALL_ENEMIES = ['walk', 'hop', 'shoot', 'bee', 'boar', 'spike'];
 const STAGES = [
-  { name: '草原', gimmick: '動く床', boss: 'boar', bossName: 'イノシシ', bossHp: 9, secs: [120, 120],
+  { name: '草原', gimmick: '動く床', boss: 'boar', bossName: 'イノシシ', bossHp: 9,
     theme: { sky: '#9fd8ff', hill: '#7cc47c', dirt: '#8b5a2b', top: '#3fa03f' } },
-  { name: '洞窟', gimmick: '崩れる床', boss: 'spider', bossName: '天井グモ', bossHp: 9, secs: [120, 120], diff: 0.5,
-    chunks: { crumble: 4, crumbleSteps: 2, flat: 2, gap: 1, step: 1 }, pool: ['walk', 'bee', 'hop', 'shoot'],
+  { name: '洞窟', gimmick: '崩れる床', boss: 'spider', bossName: '天井グモ', bossHp: 9,
     theme: { sky: '#2b2540', hill: '#3c3456', dirt: '#5a4a3a', top: '#7a6a5a' } },
-  { name: '雪山', gimmick: 'すべる床', boss: 'golem', bossName: '雪だるまゴーレム', bossHp: 9, secs: [120, 120], diff: 0.3, iceGround: 0.6,
-    chunks: { ice: 4, iceGap: 2, flat: 2, step: 1 }, pool: ['walk', 'hop', 'boar', 'bee'],
+  { name: '雪山', gimmick: 'すべる床', boss: 'golem', bossName: '雪だるまゴーレム', bossHp: 9,
     theme: { sky: '#cfe6ff', hill: '#eef6ff', dirt: '#8aa0b8', top: '#ffffff' } },
-  { name: '工場', gimmick: 'ばね床', boss: 'robo', bossName: 'ロボアーム', bossHp: 9, secs: [120, 120], diff: 0.35,
-    chunks: { spring: 3, springPit: 2, flat: 2, gap: 1, step: 1 }, pool: ['walk', 'shoot', 'bee', 'hop', 'boar'],
+  { name: '工場', gimmick: 'ばね床', boss: 'robo', bossName: 'ロボアーム', bossHp: 9,
     theme: { sky: '#3a4450', hill: '#4b5663', dirt: '#5d5d66', top: '#9aa0a8' } },
-  { name: '遺跡', gimmick: '剣', boss: 'knight', bossName: '盾の騎士', bossHp: 18, secs: [120, 120, 120], diff: 0.5, sword: true,
-    chunks: { breakWall: 3, spikes: 3, flat: 2, gap: 1, step: 1 }, pool: ['spike', 'shoot', 'walk', 'bee', 'boar'],
+  { name: '遺跡', gimmick: '剣', boss: 'knight', bossName: '盾の騎士', bossHp: 18, sword: true,
     theme: { sky: '#e8d9a8', hill: '#c9b27a', dirt: '#8a7550', top: '#b8a070' } },
-  { name: '氷の洞窟', gimmick: '剣＋崩れる床＋すべる床', boss: 'bat', bossName: '氷のコウモリ', bossHp: 18, secs: [120, 120, 120], diff: 0.55, sword: true, iceGround: 0.4,
-    chunks: { iceCrumble: 3, crumble: 2, ice: 2, breakWall: 1, spikes: 2 }, pool: ['spike', 'shoot', 'hop', 'bee', 'boar', 'walk'],
+  { name: '氷の洞窟', gimmick: '剣＋崩れる床＋すべる床', boss: 'bat', bossName: '氷のコウモリ', bossHp: 18, sword: true,
     theme: { sky: '#1d2b44', hill: '#2a4060', dirt: '#4a6a8a', top: '#bfe4ff' } },
-  { name: '空中庭園', gimmick: '剣＋動く床＋ばね床', boss: 'bird', bossName: '風の鳥', bossHp: 18, secs: [120, 120, 120], diff: 0.6, sword: true,
-    chunks: { move: 3, springMover: 2, spring: 2, lift: 1, breakWall: 1, spikes: 1 }, pool: ALL_ENEMIES,
+  { name: '空中庭園', gimmick: '剣＋動く床＋ばね床', boss: 'bird', bossName: '風の鳥', bossHp: 18, sword: true,
     theme: { sky: '#bfe8ff', hill: '#ffffff', dirt: '#9a8a7a', top: '#7fd07f' } },
-  { name: '火山', gimmick: '剣＋動く床＋崩れる床＋すべる床', boss: 'lizard', bossName: '溶岩トカゲ', bossHp: 21, secs: [120, 180, 120], diff: 0.7, sword: true, lava: true,
-    chunks: { move: 2, crumble: 2, iceCrumble: 1, iceMover: 2, ice: 1, breakWall: 1, spikes: 2 }, pool: ALL_ENEMIES,
+  { name: '火山', gimmick: '剣＋動く床＋崩れる床＋すべる床', boss: 'lizard', bossName: '溶岩トカゲ', bossHp: 21, sword: true, lava: true,
     theme: { sky: '#3a1a14', hill: '#5a2a1a', dirt: '#4a3030', top: '#8a4a3a' } },
-  { name: '嵐の塔', gimmick: '剣＋ばね床＋崩れる床＋動く床（上へ）', boss: 'dragon', bossName: '雷の竜', bossHp: 24, secs: [180, 180, 120], diff: 0.75, sword: true, tower: true,
-    chunks: { climb: 5, springMover: 1, crumble: 1, move: 1, breakWall: 1, spikes: 1 }, pool: ALL_ENEMIES,
+  { name: '嵐の塔', gimmick: '剣＋ばね床＋崩れる床＋動く床（上へ）', boss: 'dragon', bossName: '雷の竜', bossHp: 24, sword: true, tower: true,
     theme: { sky: '#2a3040', hill: '#3a4255', dirt: '#555a66', top: '#8890a0' } },
-  { name: '最後の城', gimmick: 'すべて', boss: 'demon', bossName: '魔王', bossHp: 30, secs: [180, 240, 120, 120], diff: 0.8, sword: true,
-    chunks: { move: 1, crumble: 1, ice: 1, spring: 1, iceCrumble: 1, springMover: 1, iceMover: 1, lift: 1, breakWall: 1, spikes: 1 }, pool: ALL_ENEMIES,
+  { name: '最後の城', gimmick: 'すべて', boss: 'demon', bossName: '魔王', bossHp: 30, sword: true,
     theme: { sky: '#1a1020', hill: '#2a1a30', dirt: '#3a3040', top: '#6a5070' } },
 ];
 
@@ -243,191 +232,269 @@ let STAGE = 1, ST = STAGES[0], MAX_HP = 3, SWORD = false;
 let solids = [], movers = [], enemyDefs = [], heartDefs = [], checkpoints = [], arena, WORLD_W = 16000, worldTop = 0, chunkLog = [];
 const gate = { x: 0, y: 0, w: 40, h: 0, active: false };
 
-const g = (x1, x2, y = 360, kind) => solids.push({ x: x1, y, w: x2 - x1, h: 4000, kind });
-const plat = (x1, x2, y, kind) => solids.push({ x: x1, y, w: x2 - x1, h: 20, kind });
-const tile = (x, y, ice) => solids.push({ x, y, w: 40, h: 20, kind: 'crumble', ice, st: 0, t: 0 });
-const spring = (x, y) => solids.push({ x, y: y - 14, w: 36, h: 14, kind: 'spring', squash: 0 });
-const bwall = (x, y, h) => solids.push({ x, y: y - h, w: 36, h, kind: 'break', hp: 3, maxHp: 3 });
+const add = (arr, o) => (arr.push(o), o);
+const g = (x1, x2, y = 360, kind) => add(solids, { x: x1, y, w: x2 - x1, h: 4000, kind });
+const plat = (x1, x2, y, kind) => add(solids, { x: x1, y, w: x2 - x1, h: 20, kind });
+const tile = (x, y, ice) => add(solids, { x, y, w: 40, h: 20, kind: 'crumble', ice, st: 0, t: 0 });
+const spring = (x, y) => add(solids, { x, y: y - 14, w: 36, h: 14, kind: 'spring', squash: 0 });
+const bwall = (x, y, h) => add(solids, { x, y: y - h, w: 36, h, kind: 'break', hp: 3, maxHp: 3 });
 const m = (x, y, w, ax, ay, period, phase = 0, opt = {}) =>
-  movers.push({ bx: x, by: y, w, h: 14, ax, ay, period, phase, x, y, dx: 0, dy: 0, ...opt });
-const E = (type, x, opt = {}) => enemyDefs.push({ type, sx: x, ...opt });
-const heart = (x, yOff = 50) => heartDefs.push({ x, yOff });
+  add(movers, { bx: x, by: y, w, h: 14, ax, ay, period, phase, x, y, dx: 0, dy: 0, ...opt });
+const E = (type, x, opt = {}) => add(enemyDefs, { type, sx: x, ...opt });
+const heart = (x, yOff = 50, fy) => add(heartDefs, { x, yOff, fy });
 function topAt(x) {
   let y = 99999;
   for (const s of solids) if (s.kind !== 'spring' && s.kind !== 'break' && x >= s.x && x < s.x + s.w && s.y < y) y = s.y;
   return y;
 }
 
-function buildStage1() {
-  g(0, 900);                 E('walk', 500);
-  m(980, 330, 90, 60, 0, 3);
-  g(1150, 2000);             E('walk', 1350); E('shoot', 1600);
-  m(1900, 280, 80, 0, 80, 3.5);
-  g(2000, 2600, 200);        E('bee', 2300);
-  g(2600, 3600);             E('boar', 3150);
-  m(2700, 200, 90, 60, 0, 3); m(2950, 200, 90, 0, 40, 2.5); m(3250, 200, 90, 70, 0, 3, 1);
-  m(3500, 280, 80, 0, 80, 3);
-  g(3600, 4200, 200);        E('walk', 3800); heart(3900);
-  g(4200, 5000);             E('hop', 4450); E('bee', 4850);
-  m(5080, 320, 80, 50, 0, 2.5); m(5280, 300, 80, 0, 50, 3);
-  g(5400, 6400);             E('shoot', 5700); E('walk', 6100); heart(5500);
-  m(6300, 300, 80, 0, 60, 3);
-  g(6400, 7000, 240);
-  g(7000, 8200);             heart(7550);
-  checkpoints = [50, 7600];
-  m(8280, 320, 70, 50, 0, 1.8); m(8450, 280, 70, 0, 60, 2); m(8590, 320, 70, 40, 0, 1.6);
-  g(8700, 9600);             E('bee', 8900); E('boar', 9300);
-  m(9500, 280, 80, 0, 80, 2.6);
-  g(9600, 9900, 200);
-  g(9900, 11000);            E('hop', 10500); E('shoot', 10950);
-  m(10000, 200, 70, 60, 0, 2); m(10250, 180, 70, 0, 50, 2.2); m(10500, 200, 70, 80, 0, 1.8, 1); m(10780, 200, 70, 60, 0, 2.2);
-  m(10900, 280, 80, 0, 80, 3);
-  g(11000, 11600, 200);      E('walk', 11300); heart(11100);
-  g(11600, 12600);           E('shoot', 11900); E('boar', 12200); heart(12550);
-  m(12680, 320, 70, 50, 0, 1.5); m(12850, 260, 70, 0, 70, 2); m(13000, 320, 60, 40, 0, 1.4);
-  g(13100, 14450);           E('walk', 13500); E('bee', 13800); E('boar', 14100); heart(14350);
-  return { x: 14450, y: 360 };
-}
-
-// ---- 乱数（面ごとに固定の種：毎回同じ地形） ----
-let seed = 1;
-const rng = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
-  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
-const rand = (a, b) => a + (b - a) * rng();
-const irand = (a, b) => Math.floor(rand(a, b + 1));
-const pick = arr => arr[Math.floor(rng() * arr.length)];
-function pickWeighted(w) { let s = 0; for (const k in w) s += w[k]; let r = rng() * s; for (const k in w) { r -= w[k]; if (r <= 0) return k; } return Object.keys(w)[0]; }
-
-let genD = 0;
-const groundKind = () => (ST.iceGround && rng() < ST.iceGround) ? 'ice' : undefined;
-function enemiesOn(a, b, n) {
-  for (let i = 0; i < n; i++) {
-    let type = pick(ST.pool);
-    if (type === 'spike' && !SWORD) type = 'walk';
-    E(type, a + (b - a) * (i + 0.5) / n, { range: Math.min(110, (b - a) / (n * 2) + 20) });
-  }
-}
-const nEnemies = (base) => base + Math.floor(genD * 2.2 + rng() * 0.9);
-// 高さを通常の面では 160〜360 に保つ
-const clampY = (y) => ST.tower ? Math.min(360, y) : Math.max(160, Math.min(360, y));
-
-const CHUNKS = {
-  flat(x, y) {
-    const L = irand(500, 700); g(x, x + L, y, groundKind());
-    enemiesOn(x + 120, x + L - 60, nEnemies(1)); return [x + L, y];
-  },
-  step(x, y) {
-    const ny = clampY(y + pick([-80, -60, 60, 80])); const L = irand(380, 480);
-    g(x, x + L, ny, groundKind()); enemiesOn(x + 120, x + L - 60, nEnemies(0)); return [x + L, ny];
-  },
-  gap(x, y) {
-    const gap = Math.round(70 + genD * 50), L = irand(320, 420);
-    g(x + gap, x + gap + L, y); enemiesOn(x + gap + 100, x + gap + L - 40, nEnemies(0)); return [x + gap + L, y];
-  },
-  move(x, y, opt = {}) {
-    const n = 2 + Math.floor(genD * 2 + rng()), w = Math.round(92 - genD * 26), gap = Math.round(70 + genD * 30);
-    const a = Math.round(25 + genD * 35), period = 3.2 - genD * 1.4;
-    // 左端の基準位置を一定間隔で並べる（横の床は同じ位相なので隙間は gap±a に収まる）
-    let bx = x + gap;
+// =====================================================================
+// ユニット：意味を持たせたギミックの単位。面ごとの並びと、その意図（教える・試す・組み合わせ・ひねり・選ぶ）は
+// stages/stageNN.csv に書く（正本は CSV の説明、地形はこのコード。tests/units.js で並びが一致するかを確かめる）
+// =====================================================================
+let route = [], alts = [];                // 自動プレイ（tests/route.js）が辿る足場の順。alts は寄り道・別の道
+const R = s => (route.push(s), s);
+const enemiesAt = (x, fy, en) => (en || []).forEach(([type, off, range]) => E(!SWORD && type === 'spike' ? 'walk' : type, x + off, { fy, range }));
+const kindOf = p => p.ice ? 'ice' : undefined;
+const DENT = 26;                          // 浅い穴の深さ：画面の下端（y=400）より上に底が見え、歩いては出られない（跳べば出られる）
+const tiles3 = (x, y, ice) => { for (let i = 0; i < 3; i++) tile(x + i * 40, y, ice); return { x, y, w: 120 }; };
+const U = {
+  // スタート：最初の中間地点（x+60）
+  start(x, y, p) { const L = p.L || 600; R(g(x, x + L, y)); checkpoints.push(x + 60); return [x + L, y]; },
+  // 中間地点：敵なしの床 700px。前後の敵は loadStage の cpReach で外す
+  cp(x, y) { R(g(x, x + 700, y)); checkpoints.push(x + 320); heart(x + 250, 50, y); return [x + 700, y]; },
+  // 平地（敵・ハートを置く）
+  flat(x, y, p) { const L = p.L || 600; R(g(x, x + L, y, kindOf(p))); enemiesAt(x, y, p.en); (p.hearts || []).forEach(o => heart(x + o, 50, y)); return [x + L, y]; },
+  // 浅い穴：落ちても歩いて戻れる深さ。跳び越えることを教える
+  dent(x, y, p) { const w = p.w || 110, d = p.d || DENT, L = p.L || 300, k = kindOf(p);
+    R(g(x, x + 120, y, k)); g(x + 120, x + 120 + w, y + d, k); R(g(x + 120 + w, x + 120 + w + L, y, k)); enemiesAt(x + 120 + w, y, p.en); return [x + 120 + w + L, y]; },
+  // 穴（落ちる）。ws に幅を並べると、間の足場（land）を挟んだ連続ジャンプ
+  pits(x, y, p) { const ws = p.ws || [110], land = p.land || 100, L = p.L || 300, k = kindOf(p); let px = x + 120; R(g(x, px, y, k));
+    ws.forEach((w, i) => { const len = i === ws.length - 1 ? L : land; R(g(px + w, px + w + len, y, k)); enemiesAt(px + w, y, (p.onLand || [])[i]); px += w + len; });
+    enemiesAt(px - L, y, p.en); return [px, y]; },
+  // 段（dy<0 で上り、dy>0 で下り）。n 段を w ずつ。gap があれば穴を跳んで段を移る
+  stairs(x, y, p) { const n = p.n || 3, dy = p.to != null ? (p.to - y) / n : p.dy, w = p.w || 140, gap = p.gap || 0, L = p.L || 300, k = kindOf(p); let px = x, py = y;
+    for (let i = 0; i < n; i++) { py += dy; R(g(px + gap, px + gap + w, py, k)); enemiesAt(px + gap, py, (p.onStep || [])[i]); px += gap + w; }
+    R(g(px, px + L, py, k)); enemiesAt(px, py, p.en); return [px + L, py]; },
+  // 崩れる階段（下り）：止まると落ちる段を下りる
+  tileStairs(x, y, p) { const n = p.n || 4, dy = p.to != null ? (p.to - y) / n : p.dy, L = p.L || 300; let px = x + 40, py = y; R(g(x, x + 40, y));
+    for (let i = 0; i < n; i++) { py += dy; tile(px, py, p.ice); tile(px + 40, py, p.ice); px += 120; }
+    R(g(px, px + L, py)); enemiesAt(px, py, p.en); return [px + L, py]; },
+  // 縦（上へ）：左右に互い違いの足場を n 段（奇数）登って、右の出口へ。tiles なら崩れる足場
+  climb(x, y, p) { const n = p.n || 3, dy = p.dy || -95, L = p.L || 400; R(g(x, x + 320, y, kindOf(p)));
+    for (let i = 1; i <= n; i++) { const ly = y + dy * i, a = i % 2 ? x + 180 : x + 20;
+      R(p.tiles ? tiles3(a, ly, p.ice) : plat(a, a + 120, ly, kindOf(p))); enemiesAt(a, ly, (p.onLevel || [])[i]); }
+    const top = y + dy * n; R(g(x + 320, x + 320 + L, top, kindOf(p))); enemiesAt(x + 320, top, p.en); return [x + 320 + L, top]; },
+  // 折り返し：下の通路を右へ → 右の段で上の通路へ → 左へ戻る → 左の段で一番上へ → 右へ出る（2h 上がる）
+  switchback(x, y, p) { const W = p.W || 640, h = p.h || 130, L = p.L || 400, k = kindOf(p);
+    R(g(x, x + W, y, k)); enemiesAt(x, y, p.lower);
+    R(plat(x + W - 90, x + W - 10, y - h / 2));
+    R(plat(x + 40, x + W - 140, y - h, k)); enemiesAt(x + 40, y - h, p.upper);
+    if (p.wall) bwall(x + Math.round(W / 2), y - h, h - 20);          // 上の通路をふさぐ壁（剣で壊す）
+    R(plat(x - 40, x + 20, y - 1.5 * h));
+    R(plat(x + 110, x + W, y - 2 * h, k));
+    R(g(x + W, x + W + L, y - 2 * h)); enemiesAt(x + W, y - 2 * h, p.en); return [x + W + L, y - 2 * h]; },
+  // 寄り道で回復：本道はそのまま進める。上の段（行き止まり）にハート。spring ならばねで上がる
+  detour(x, y, p) { const L = p.L || 900, main = R(g(x, x + L, y)), alt = [];
+    if (p.spring) { alt.push(spring(x + 160, y)); alt.push(plat(x + 260, x + 520, y - 220)); heart(x + 440, 40, y - 220); heart(x + 490, 40, y - 220); }
+    else { alt.push(plat(x + 180, x + 280, y - 90)); alt.push(plat(x + 330, x + 540, y - 180)); heart(x + 460, 40, y - 180); heart(x + 510, 40, y - 180); }
+    alts.push({ from: main, path: alt, to: main }); enemiesAt(x, y, p.en); return [x + L, y]; },
+  // 撃つ敵を先に倒すか、避けて進むか：上の段に撃つ敵。下の道は撃たれながら穴を跳ぶ。上の段から穴を越えてもよい
+  snipe(x, y, p) { const g1 = R(g(x, x + 840, y)), step = plat(x + 460, x + 540, y - 60), ledge = plat(x + 580, x + 800, y - 120);
+    E('shoot', x + 740, { fy: y - 120 }); if (p.two) E('shoot', x + 1100, { fy: y });
+    const g2 = R(g(x + 940, x + 1500, y)); alts.push({ from: g1, path: [step, ledge], to: g2 }); enemiesAt(x + 940, y, p.en); return [x + 1500, y]; },
+  // 動く床：n 個。ay なら上下、mix なら横と上下を交互。下は穴（dent なら浅い穴）。spring ならばね付き
+  movers(x, y, p) { const n = p.n || 2, w = p.w || 90, gap = p.gap || 80, ax = p.ax ?? 50, ay = p.ay || 0, per = p.period || 3, L = p.L || 300, k = kindOf(p);
+    R(g(x, x + 120, y, k)); let bx = x + 120 + gap;
     for (let i = 0; i < n; i++) {
-      if (rng() < 0.4) { const ay = Math.round(20 + genD * 25); m(bx, y - ay, w, 0, ay, period, i % 2 ? Math.PI : 0, opt); }
-      else m(bx, y, w, a, 0, period, 0, opt);
+      const vert = ay || (p.mix && i % 2 === 1);
+      R(m(bx, y - (vert ? (ay || 40) : 0), w, vert ? 0 : ax, vert ? (ay || 40) : 0, per, vert ? i * 1.3 : 0, { ice: p.ice }));
       bx += w + gap;
     }
-    const end = bx; const L = irand(300, 420);
-    g(end, end + L, y); enemiesOn(end + 100, end + L - 40, nEnemies(0)); return [end + L, y];
-  },
-  iceMover(x, y) { return CHUNKS.move(x, y, { ice: true }); },
-  lift(x, y) {
-    const H = 150; if (!ST.tower && y - H < 160) return CHUNKS.step(x, y);
-    g(x, x + 160, y); m(x + 20, y - H / 2, 80, 0, H / 2, 3.4 - genD);
-    const L = irand(400, 520); g(x + 110, x + 110 + L, y - H, groundKind());
-    enemiesOn(x + 240, x + 110 + L - 40, nEnemies(0)); return [x + 110 + L, y - H];
-  },
-  crumble(x, y, ice) {
-    const n = 6 + Math.floor(genD * 7); let px = x + 40;
-    for (let i = 0; i < n; i++) {
-      tile(px, y, ice); px += 40;
-      if (i % 3 === 2 && i < n - 1 && rng() < 0.3 + genD * 0.5) px += Math.round(50 + genD * 40);
-    }
-    if (genD > 0.4) E('bee', x + (px - x) / 2);
-    const L = irand(320, 420); g(px + 40, px + 40 + L, y); enemiesOn(px + 140, px + L, nEnemies(0)); return [px + 40 + L, y];
-  },
-  iceCrumble(x, y) { return CHUNKS.crumble(x, y, true); },
-  crumbleSteps(x, y) {                                   // 崩れる階段：上ってまた下りる
-    let px = x + 40, py = y;
-    const up = !ST.tower && y - 135 < 160 ? false : true;
-    for (let i = 0; i < 3; i++) { py += up ? -45 : 0; tile(px, py); tile(px + 40, py); px += 120; }
-    const L = irand(350, 450), ny = up ? y - 135 : y; g(px, px + L, ny); enemiesOn(px + 120, px + L - 40, nEnemies(0)); return [px + L, ny];
-  },
-  ice(x, y) {
-    const L = irand(600, 800); g(x, x + L, y, 'ice'); enemiesOn(x + 150, x + L - 60, nEnemies(1)); return [x + L, y];
-  },
-  iceGap(x, y) {
-    let px = x; for (let i = 0; i < 2 + Math.floor(genD * 2); i++) {
-      const L = irand(180, 260); g(px, px + L, y, 'ice'); px += L + Math.round(60 + genD * 40);
-    }
-    const L = irand(300, 400); g(px, px + L, y, 'ice'); enemiesOn(px + 100, px + L - 40, nEnemies(0)); return [px + L, y];
-  },
-  spring(x, y) {
-    let H = Math.round(150 + genD * 50); if (!ST.tower) H = Math.min(H, y - 140);
-    if (H < 100) return CHUNKS.step(x, y);
-    g(x, x + 230, y); spring(x + 130, y);
-    const L = irand(380, 480); g(x + 230, x + 230 + L, y - H); enemiesOn(x + 330, x + 230 + L - 40, nEnemies(0));
-    return [x + 230 + L, y - H];
-  },
-  springPit(x, y) {
-    const pit = Math.round(150 + genD * 40); g(x, x + 200, y); spring(x + 164, y);   // 弱いばねでも届く〜長押しが要る幅
-    const L = irand(320, 420); g(x + 200 + pit, x + 200 + pit + L, y); enemiesOn(x + 300 + pit, x + 200 + pit + L - 40, nEnemies(0));
-    return [x + 200 + pit + L, y];
-  },
-  springMover(x, y) {                                    // ばね付きの動く床で高い所へ
-    const H = ST.tower ? 170 : Math.min(170, y - 150); if (H < 100) return CHUNKS.move(x, y);
-    m(x + 160, y, 80, 60, 0, 2.8 - genD, 0, { spring: true });
-    const pit = 320, L = irand(380, 460);
-    g(x + pit, x + pit + L, y - H); enemiesOn(x + pit + 100, x + pit + L - 40, nEnemies(0)); return [x + pit + L, y - H];
-  },
-  breakWall(x, y) {
-    const L = irand(560, 700); g(x, x + L, y, groundKind());
-    E('spike', x + 140, { range: 60 }); bwall(x + 300, y, 220);
-    if (genD > 0.5) E('shoot', x + L - 120); return [x + L, y];
-  },
-  spikes(x, y) {
-    const L = irand(600, 760); g(x, x + L, y, groundKind());
-    const n = 2 + Math.floor(genD * 2); for (let i = 0; i < n; i++) E('spike', x + 120 + (L - 200) * i / Math.max(1, n - 1), { range: 70 });
-    if (rng() < 0.5) E('shoot', x + L - 80); return [x + L, y];
-  },
-  climb(x, y) {
-    const H = irand(120, 160), how = pick(['spring', 'lift', 'steps']);
-    if (how === 'spring') { g(x, x + 220, y); spring(x + 120, y); const L = irand(320, 420); g(x + 220, x + 220 + L, y - H); enemiesOn(x + 320, x + 200 + L, nEnemies(0)); return [x + 220 + L, y - H]; }
-    if (how === 'lift') { g(x, x + 160, y); m(x + 20, y - H / 2, 80, 0, H / 2, 3.2 - genD); const L = irand(320, 420); g(x + 110, x + 110 + L, y - H); enemiesOn(x + 220, x + 90 + L, nEnemies(0)); return [x + 110 + L, y - H]; }
-    g(x, x + 120, y); let px = x + 140, py = y;
-    for (let i = 0; i < 3; i++) { py -= H / 3; tile(px, py); tile(px + 40, py); px += 110; }
-    const L = irand(320, 420); g(px, px + L, py); enemiesOn(px + 100, px + L - 40, nEnemies(0)); return [px + L, py];
-  },
+    if (p.dent) g(x + 120, bx, y + p.dent, k);
+    R(g(bx, bx + L, y, k)); enemiesAt(bx, y, p.en); return [bx + L, y]; },
+  // 縦の動く床で上の段へ（下は穴）
+  lift(x, y, p) { const h = p.h || 150, L = p.L || 400; R(g(x, x + 180, y)); R(m(x + 190, y - h / 2, 80, 0, h / 2, p.period || 3.4));
+    R(g(x + 280, x + 280 + L, y - h)); enemiesAt(x + 280, y - h, p.en); return [x + 280 + L, y - h]; },
+  // 崩れる床：n 枚（gaps の番号の前で 60px 空く＝跳ぶ）。dent なら下は浅い穴
+  crumble(x, y, p) { const n = p.n || 6, L = p.L || 300; R(g(x, x + 100, y, kindOf(p))); let px = x + 100;
+    for (let i = 0; i < n; i++) { if ((p.gaps || []).includes(i)) px += 60; tile(px, y, p.ice); px += 40; }
+    if (p.dent) g(x + 100, px, y + p.dent);
+    R(g(px, px + L, y)); enemiesAt(px, y, p.en); return [px + L, y]; },
+  // すべる床：L 走ったあと w の穴（w=0 なら穴なし）
+  iceRun(x, y, p) { const L = p.L || 700, w = p.w || 0, L2 = p.L2 || 300; R(g(x, x + L, y, 'ice')); enemiesAt(x, y, p.en);
+    if (!w) return [x + L, y];
+    R(g(x + L + w, x + L + w + L2, y)); return [x + L + w + L2, y]; },
+  // ばねで上の段へ（pit なら手前に穴）
+  springUp(x, y, p) { const h = p.h || 180, L = p.L || 400; R(g(x, x + 230, y)); R(spring(x + 130, y));
+    R(g(x + 230, x + 230 + L, y - h)); enemiesAt(x + 230, y - h, p.en); return [x + 230 + L, y - h]; },
+  // ばねで穴を越える（同じ高さ）
+  springPit(x, y, p) { const w = p.w || 170, L = p.L || 400; R(g(x, x + 200, y)); R(spring(x + 164, y));
+    R(g(x + 200 + w, x + 200 + w + L, y)); enemiesAt(x + 200 + w, y, p.en); return [x + 200 + w + L, y]; },
+  // ばね付きの動く床で上の段へ
+  springMover(x, y, p) { const h = p.h || 170, L = p.L || 400; R(g(x, x + 160, y)); R(m(x + 200, y, 80, 30, 0, p.period || 2.6, 0, { spring: true }));
+    R(g(x + 330, x + 330 + L, y - h)); enemiesAt(x + 330, y - h, p.en); return [x + 330 + L, y - h]; },
+  // 剣で壊す壁
+  wallBreak(x, y, p) { const L = p.L || 700; R(g(x, x + L, y, kindOf(p))); bwall(x + (p.at || 300), y, p.h || 220); enemiesAt(x, y, p.en); return [x + L, y]; },
 };
-
-function buildGenerated() {
-  seed = STAGE * 7919;
-  let x = 0, y = 360, minY = 360;
-  g(0, 600, y); x = 600; checkpoints = [60];
-  const total = ST.secs.reduce((a, b) => a + b, 0); let done = 0;
-  ST.secs.forEach((sec, si) => {
-    if (si > 0) { g(x, x + 700, y); checkpoints.push(x + 320); heart(x + 250); x += 700; }   // 中間地点：敵なし
-    const n = Math.round(sec / SECONDS_PER_CHUNK);
-    for (let k = 0; k < n; k++) {
-      genD = Math.min(1, ST.diff + 0.25 * (done + k / n * sec) / total);
-      const type = pickWeighted(ST.chunks);
-      const before = solids.length, x0 = x, y0 = y;
-      [x, y] = CHUNKS[type](x, y);
-      chunkLog.push({ type, x: x0, y: y0 });
-      minY = Math.min(minY, y);
-      if (k % 4 === 3) heart(x - 120);
-      if (solids.length === before) g(x, x + 200, y);
-    }
-    done += sec;
-  });
-  worldTop = Math.min(0, minY - 300);
+// 面ごとの並び：[番号, 種類（start / unit / cp）, 部品, 値]。最後に buildArena が「ボス前」と「ボス」を足す
+const STAGE_UNITS = [
+  [ // 1 草原：動く床
+    ['スタート', 'start', 'start'],
+    ['1-1', 'unit', 'dent', { w: 110 }],
+    ['1-2', 'unit', 'pits', { ws: [110], L: 400 }],
+    ['1-3', 'unit', 'flat', { L: 700, en: [['walk', 420, 80]] }],
+    ['中間1', 'cp', 'cp'],
+    ['1-4', 'unit', 'pits', { ws: [90, 110, 120], land: 110 }],
+    ['中間2', 'cp', 'cp'],
+    ['1-5', 'unit', 'movers', { n: 1, dent: DENT, ax: 40 }],
+    ['1-6', 'unit', 'movers', { n: 2, ax: 50 }],
+    ['1-7', 'unit', 'detour', { en: [['walk', 700, 80]] }],
+    ['1-8', 'unit', 'lift', { h: 140 }],
+    ['1-9', 'unit', 'snipe', {}],
+    ['1-10', 'unit', 'movers', { n: 3, mix: true, ax: 50 }],
+  ],
+  [ // 2 洞窟：崩れる床
+    ['スタート', 'start', 'start'],
+    ['2-1', 'unit', 'crumble', { n: 5, dent: DENT }],
+    ['2-2', 'unit', 'crumble', { n: 7 }],
+    ['2-3', 'unit', 'flat', { L: 1000, en: [['bee', 200], ['walk', 450, 60]] }],
+    ['中間1', 'cp', 'cp'],
+    ['2-4', 'unit', 'crumble', { n: 9, gaps: [3, 6], en: [['walk', 200, 60]] }],
+    ['2-5', 'unit', 'climb', { n: 3, tiles: true }],
+    ['中間2', 'cp', 'cp'],
+    ['2-6', 'unit', 'detour', { en: [['hop', 700, 80]] }],
+    ['2-7', 'unit', 'snipe', {}],
+    ['2-8', 'unit', 'tileStairs', { n: 4, to: 355 }],
+  ],
+  [ // 3 雪山：すべる床
+    ['スタート', 'start', 'start'],
+    ['3-1', 'unit', 'flat', { L: 800, ice: true }],
+    ['3-2', 'unit', 'iceRun', { L: 500, w: 110 }],
+    ['3-3', 'unit', 'flat', { L: 1000, en: [['boar', 300, 120]] }],
+    ['中間1', 'cp', 'cp'],
+    ['3-4', 'unit', 'pits', { ws: [100, 100, 110], land: 130, ice: true }],
+    ['3-5', 'unit', 'switchback', { ice: true, lower: [['walk', 300, 60]] }],
+    ['中間2', 'cp', 'cp'],
+    ['3-6', 'unit', 'detour', { en: [['hop', 700, 80]] }],
+    ['3-7', 'unit', 'stairs', { n: 3, to: 355, w: 170, ice: true }],
+    ['3-8', 'unit', 'snipe', {}],
+  ],
+  [ // 4 工場：ばね床
+    ['スタート', 'start', 'start'],
+    ['4-1', 'unit', 'springUp', { h: 150 }],
+    ['4-2', 'unit', 'springPit', { w: 160 }],
+    ['中間1', 'cp', 'cp'],
+    ['4-3', 'unit', 'springUp', { h: 260 }],
+    ['4-4', 'unit', 'snipe', {}],
+    ['4-5', 'unit', 'detour', { spring: true }],
+    ['中間2', 'cp', 'cp'],
+    ['4-6', 'unit', 'stairs', { n: 3, to: 250, w: 170, gap: 60, en: [['hop', 200, 60]] }],
+    ['4-7', 'unit', 'springPit', { w: 180, en: [['shoot', 330]] }],
+  ],
+  [ // 5 遺跡：剣
+    ['スタート', 'start', 'start'],
+    ['5-1', 'unit', 'wallBreak', {}],
+    ['5-2', 'unit', 'flat', { L: 800, en: [['spike', 450, 60]] }],
+    ['5-3', 'unit', 'flat', { L: 1300, en: [['shoot', 600]] }],
+    ['中間1', 'cp', 'cp'],
+    ['5-4', 'unit', 'pits', { ws: [100, 110], land: 220, onLand: [[['spike', 120, 50]]], en: [['spike', 180, 60]] }],
+    ['5-5', 'unit', 'switchback', { wall: true, lower: [['spike', 300, 60]] }],
+    ['中間2', 'cp', 'cp'],
+    ['5-6', 'unit', 'snipe', { two: true }],
+    ['5-7', 'unit', 'detour', { en: [['spike', 700, 60]] }],
+    ['中間3', 'cp', 'cp'],
+    ['5-8', 'unit', 'stairs', { n: 3, to: 355, w: 200, onStep: [[], [['spike', 100, 40]], [['spike', 100, 40]]] }],
+    ['5-9', 'unit', 'wallBreak', { L: 1300, at: 420, en: [['shoot', 650]] }],
+  ],
+  [ // 6 氷の洞窟：剣＋崩れる床＋すべる床
+    ['スタート', 'start', 'start'],
+    ['6-1', 'unit', 'crumble', { n: 6, dent: DENT, ice: true }],
+    ['6-2', 'unit', 'iceRun', { L: 600, w: 110, en: [['spike', 460, 40]] }],
+    ['6-3', 'unit', 'climb', { n: 3, tiles: true, ice: true }],
+    ['中間1', 'cp', 'cp'],
+    ['6-4', 'unit', 'pits', { ws: [100, 110, 110], land: 120, ice: true, en: [['bee', 100]] }],
+    ['6-5', 'unit', 'snipe', {}],
+    ['中間2', 'cp', 'cp'],
+    ['6-6', 'unit', 'switchback', { ice: true, upper: [['spike', 200, 50]] }],
+    ['6-7', 'unit', 'detour', { en: [['bee', 250]] }],
+    ['中間3', 'cp', 'cp'],
+    ['6-8', 'unit', 'stairs', { n: 4, to: 175, w: 170, ice: true }],
+    ['6-9', 'unit', 'crumble', { n: 10, ice: true, gaps: [4, 7] }],
+  ],
+  [ // 7 空中庭園：剣＋動く床＋ばね床
+    ['スタート', 'start', 'start'],
+    ['7-1', 'unit', 'movers', { n: 2, ax: 50 }],
+    ['7-2', 'unit', 'springMover', { h: 170 }],
+    ['7-3', 'unit', 'lift', { h: 150 }],
+    ['中間1', 'cp', 'cp'],
+    ['7-4', 'unit', 'movers', { n: 3, mix: true, ax: 60, en: [['bee', 150]] }],
+    ['7-5', 'unit', 'snipe', {}],
+    ['中間2', 'cp', 'cp'],
+    ['7-6', 'unit', 'climb', { n: 3, L: 700, en: [['spike', 350, 60]] }],
+    ['7-7', 'unit', 'detour', { spring: true, en: [['spike', 700, 60]] }],
+    ['中間3', 'cp', 'cp'],
+    ['7-8', 'unit', 'stairs', { n: 4, to: 115, w: 160, gap: 50 }],
+    ['7-9', 'unit', 'movers', { n: 3, ax: 60, gap: 90 }],
+  ],
+  [ // 8 火山：剣＋動く床＋崩れる床＋すべる床
+    ['スタート', 'start', 'start'],
+    ['8-1', 'unit', 'movers', { n: 2, ax: 50, ice: true }],
+    ['8-2', 'unit', 'crumble', { n: 8 }],
+    ['8-3', 'unit', 'iceRun', { L: 600, w: 120 }],
+    ['中間1', 'cp', 'cp'],
+    ['8-4', 'unit', 'climb', { n: 3 }],
+    ['8-5', 'unit', 'snipe', {}],
+    ['中間2', 'cp', 'cp'],
+    ['8-6', 'unit', 'switchback', { upper: [['spike', 200, 50]] }],
+    ['8-7', 'unit', 'detour', { en: [['boar', 300, 120]] }],
+    ['中間3', 'cp', 'cp'],
+    ['8-8', 'unit', 'tileStairs', { n: 4, to: 175 }],
+    ['8-9', 'unit', 'movers', { n: 3, ax: 60, ice: true, en: [['spike', 180, 60]] }],
+  ],
+  [ // 9 嵐の塔：上へ
+    ['スタート', 'start', 'start'],
+    ['9-1', 'unit', 'stairs', { n: 3, dy: -80, w: 160 }],
+    ['9-2', 'unit', 'climb', { n: 3 }],
+    ['9-3', 'unit', 'springUp', { h: 200 }],
+    ['中間1', 'cp', 'cp'],
+    ['9-4', 'unit', 'lift', { h: 160 }],
+    ['9-5', 'unit', 'switchback', { lower: [['spike', 300, 60]] }],
+    ['中間2', 'cp', 'cp'],
+    ['9-6', 'unit', 'climb', { n: 3, tiles: true }],
+    ['9-7', 'unit', 'snipe', {}],
+    ['9-8', 'unit', 'detour', { en: [['bee', 250]] }],
+    ['中間3', 'cp', 'cp'],
+    ['9-9', 'unit', 'springUp', { h: 250 }],
+    ['9-10', 'unit', 'climb', { n: 3, L: 800, en: [['bee', 50]] }],
+  ],
+  [ // 10 最後の城：すべて
+    ['スタート', 'start', 'start'],
+    ['10-1', 'unit', 'pits', { ws: [110, 120, 130], land: 100 }],
+    ['10-2', 'unit', 'movers', { n: 3, mix: true, ax: 60 }],
+    ['10-3', 'unit', 'crumble', { n: 8, gaps: [4] }],
+    ['中間1', 'cp', 'cp'],
+    ['10-4', 'unit', 'iceRun', { L: 800, w: 120, en: [['boar', 550, 100]] }],
+    ['10-5', 'unit', 'springPit', { w: 170 }],
+    ['10-6', 'unit', 'wallBreak', { L: 1300, en: [['spike', 160, 50], ['shoot', 600]] }],
+    ['中間2', 'cp', 'cp'],
+    ['10-7', 'unit', 'switchback', { wall: true, upper: [['spike', 120, 40]] }],
+    ['10-8', 'unit', 'climb', { n: 3, tiles: true }],
+    ['中間3', 'cp', 'cp'],
+    ['10-9', 'unit', 'snipe', { two: true }],
+    ['10-10', 'unit', 'detour', { spring: true, en: [['spike', 700, 60]] }],
+    ['10-11', 'unit', 'tileStairs', { n: 4, to: 175 }],
+    ['10-12', 'unit', 'movers', { n: 3, ax: 60, ice: true, mix: true }],
+  ],
+];
+const unitAt = x => { let id = ''; for (const c of chunkLog) if (c.x <= x) id = c.type; return id; };   // 画面上の表示：いまいるユニットの番号（CSV と同じ）
+function buildUnits() {
+  route = []; alts = [];
+  let x = 0, y = 360;
+  for (const [id, , key, p = {}] of STAGE_UNITS[STAGE - 1]) {
+    const x0 = x, y0 = y; [x, y] = U[key](x, y, p); chunkLog.push({ type: id, x: x0, y: y0 });
+  }
+  worldTop = Math.min(0, Math.min(...solids.map(s => s.y), ...movers.map(p => p.by - p.ay)) - 300);
   return { x, y };
 }
 
@@ -474,7 +541,7 @@ const cpReach = d => 250 + ({ shoot: 600, bee: 560 }[d.type] || ((d.range || 110
 function loadStage(n) {
   STAGE = n; ST = STAGES[n - 1]; MAX_HP = MAX_HP_BY_STAGE[n - 1] * hpScale(); SWORD = !!ST.sword;
   solids = []; movers = []; enemyDefs = []; heartDefs = []; checkpoints = []; worldTop = 0; chunkLog = [];
-  const end = n === 1 ? buildStage1() : buildGenerated();
+  const end = buildUnits();
   buildArena(end);
   enemyDefs = enemyDefs.filter(d => checkpoints.every(c => Math.abs(d.sx - c) - CP_ZONE > cpReach(d)));   // 中間地点の前後には敵も弾も来ない
   if (n <= 4) enemyDefs.forEach(d => { d.hp = 1; });   // 剣のない面は1回踏めば倒れる
@@ -496,7 +563,8 @@ let progress = { cleared: 0, best: {} };
 try { progress = Object.assign(progress, JSON.parse(localStorage.getItem('sidescroll10_progress') || '{}')); } catch (_) {}
 function saveProgress() { try { localStorage.setItem('sidescroll10_progress', JSON.stringify(progress)); } catch (_) {} }
 // 中間セーブ：通った中間地点・挑戦回数・時間を progress.resume に1つだけ残す（デバッグ中は残さない）
-function saveResume() { if (debug || cp === 0) return; progress.resume = { stage: STAGE, cp, attempts, playTime: Math.floor(playTime) }; saveProgress(); }
+const LAYOUT = 2;                                       // 地形の版（2 = ユニットで作り直した面）。違う版の中間セーブは使わない
+function saveResume() { if (debug || cp === 0) return; progress.resume = { stage: STAGE, cp, attempts, playTime: Math.floor(playTime), layout: LAYOUT }; saveProgress(); }
 function clearResume(n) { if (debug || !progress.resume || progress.resume.stage !== n) return; delete progress.resume; saveProgress(); }
 // EASY モード：プレイヤーの HP（と、ハートの回復量）を10倍。ステージ選択で切り替え、次に面を始めたときから効く
 const hpScale = () => progress.easy ? 10 : 1;
@@ -513,14 +581,14 @@ const ENEMY_STATS = {
 function resetWorld() {
   const spd = 1 + 0.06 * (STAGE - 1);
   enemies = enemyDefs.map(d => {
-    const s = ENEMY_STATS[d.type], floor = topAt(d.sx + 15);
+    const s = ENEMY_STATS[d.type], floor = d.fy ?? topAt(d.sx + 15);
     const e = { ...s, ...d, maxHp: d.hp || s.hp, x: d.sx, floor, y: floor - s.h, vx: (d.type === 'walk' || d.type === 'spike') ? -1.6 * spd : 0, vy: 0,
       dir: -1, timer: 0, state: 'idle', alive: true, active: false, flash: 0, lastSwing: -1, spd };
     e.min = d.sx - (d.range || 110); e.max = d.sx + (d.range || 110);
     if (d.type === 'bee') { e.baseY = floor - 150; e.y = e.baseY; }
     return e;
   });
-  hearts = heartDefs.filter(h => topAt(h.x) < 99999).map(h => ({ x: h.x, y: topAt(h.x) - h.yOff, taken: false }));
+  hearts = heartDefs.filter(h => h.fy != null || topAt(h.x) < 99999).map(h => ({ x: h.x, y: (h.fy ?? topAt(h.x)) - h.yOff, taken: false }));
   for (const s of solids) if (s.orig) Object.assign(s, s.orig, { gone: false });
   shots = []; particles = [];
   boss = { type: ST.boss, hp: ST.bossHp, maxHp: ST.bossHp, state: 'wait', timer: 0, dir: -1, flash: 0, lastSwing: -1, vx: 0, vy: 0, n: 0, hits: 0, collide: true, phase: 1, inv: 0, roar: 0 };
@@ -685,7 +753,7 @@ function startOrResume(n) {                             // 中間セーブがあ
   startStage(n);
   const r = progress.resume;
   if (debug || !r || r.stage !== n) return;
-  if (!(r.cp > 0 && r.cp < checkpoints.length)) { clearResume(n); return; }
+  if (r.layout !== LAYOUT || !(r.cp > 0 && r.cp < checkpoints.length)) { clearResume(n); return; }
   cp = r.cp; respawn(); attempts = r.attempts || 1; playTime = r.playTime || 0;
 }
 function retryStage() { clearResume(STAGE); startStage(STAGE); }
@@ -1544,7 +1612,7 @@ function drawHud() {
   }
   ctx.fillStyle = '#fff'; ctx.font = '14px sans-serif';
   const mm = Math.floor(playTime / 60), ss = String(Math.floor(playTime % 60)).padStart(2, '0');
-  const status = `${STAGE}-${cp + 1}　挑戦 ${attempts}　${mm}:${ss}${progress.easy ? '　EASY' : ''}${debug ? '　DEBUG' : ''}`;
+  const status = `${unitAt(player.x)}　挑戦 ${attempts}　${mm}:${ss}${progress.easy ? '　EASY' : ''}${debug ? '　DEBUG' : ''}`;
   const sw = ctx.measureText(status).width;               // ボス名（x=430）に掛かるなら字を小さくする
   if (sw > 212) ctx.font = `${Math.max(10, Math.floor(14 * 212 / sw))}px sans-serif`;
   ctx.fillText(status, 210, 21);
@@ -1628,7 +1696,7 @@ function drawMenu() {
     drawButtons(); ctx.textAlign = 'center';
   } else if (state === 'sections') {
     ctx.font = 'bold 24px sans-serif'; ctx.fillText(`ステージ${STAGE} ${ST.name}　開始地点（デバッグ）`, VW / 2, 120);
-    ctx.font = '14px sans-serif'; ctx.fillText(`ギミック：${ST.gimmick}　区間：${ST.secs.map(s => s / 60 + '分').join('：')}　部品 ${chunkLog.length} 個`, VW / 2, 160);
+    ctx.font = '14px sans-serif'; ctx.fillText(`ギミック：${ST.gimmick}　ユニット ${chunkLog.filter(c => c.type.includes('-')).length} 個`, VW / 2, 160);
     if (!touchUI()) ctx.fillText('数字キーでも選べます（Esc で戻る）', VW / 2, 190);
     drawButtons();
   }
