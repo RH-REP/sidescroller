@@ -70,7 +70,7 @@
 <div id="rotate"><div><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="14" rx="1.5"/><path d="M4 14a8 8 0 0 0 8 7M20 10a8 8 0 0 0-8-7"/><path d="M12 21l-1.5-1.5M12 3l1.5 1.5"/></svg><br>横向きにしてください<br><button class="gbtn" data-act="guide">全画面で遊ぶ方法</button></div></div>
 <!-- ホーム画面に追加の案内。画面の絵はイメージ（OS・ブラウザの版でボタンの場所や名前が違うことがある） -->
 <div id="guide" data-tab="ios"><div class="gwrap">
-  <div class="ghead"><h2>全画面で遊ぶには</h2><button class="gclose" data-act="close">✕ とじる</button></div>
+  <div class="ghead"><h2>全画面で遊ぶには</h2><button class="gclose" data-act="close">✕ 閉じる</button></div>
   <p class="glead">ホーム画面に追加して、そのアイコンから開くと、ブラウザの枠が消えて全画面で遊べます。</p>
   <div class="gtabs"><button class="gtab" data-t="ios" data-act="ios">iPhone</button><button class="gtab" data-t="android" data-act="android">Android</button></div>
 
@@ -116,7 +116,7 @@
         <rect x="7" y="146" width="106" height="65" fill="#d1d3d9"/>
         <g fill="#fff"><rect x="11" y="151" width="9" height="11" rx="2"/><rect x="22" y="151" width="9" height="11" rx="2"/><rect x="33" y="151" width="9" height="11" rx="2"/><rect x="44" y="151" width="9" height="11" rx="2"/><rect x="55" y="151" width="9" height="11" rx="2"/><rect x="66" y="151" width="9" height="11" rx="2"/><rect x="77" y="151" width="9" height="11" rx="2"/><rect x="88" y="151" width="9" height="11" rx="2"/><rect x="99" y="151" width="9" height="11" rx="2"/><rect x="16" y="166" width="88" height="11" rx="2"/></g>
       </svg>
-      <p><span class="gn">3</span><b>「Webアプリとして開く」</b> がオン（緑）なのを見て、右上の <b>「追加」</b> を押す。この項目が無い版もあります。</p>
+      <p><span class="gn">3</span><b>「Webアプリとして開く」</b> がオン（緑）なのを見て、右上の <b>「追加」</b> を押す。この項目が無いバージョンもあります。</p>
     </div>
     <div class="gstep">
       <svg viewBox="0 0 120 220" font-family="sans-serif" aria-hidden="true">
@@ -153,7 +153,7 @@
         <g font-size="6" fill="#222"><text x="50" y="46">新しいタブ</text><text x="50" y="64">履歴</text><text x="50" y="82">ダウンロード</text><text x="50" y="100" font-weight="bold">ホーム画面に追加</text><text x="50" y="118">共有</text><text x="50" y="136">設定</text></g>
         <rect x="46" y="90" width="64" height="15" rx="4" fill="none" stroke="#ff3b30" stroke-width="2.5"/>
       </svg>
-      <p><span class="gn">2</span><b>「ホーム画面に追加」</b> を押す。版によっては <b>「アプリをインストール」</b> という名前です。</p>
+      <p><span class="gn">2</span><b>「ホーム画面に追加」</b> を押す。バージョンによっては <b>「アプリをインストール」</b> という名前です。</p>
     </div>
     <div class="gstep">
       <svg viewBox="0 0 120 220" font-family="sans-serif" aria-hidden="true">
@@ -179,7 +179,7 @@
   </div>
 
   <ul class="gnote">
-    <li>画面の絵はイメージです。OS やブラウザの版によって、ボタンの場所や名前が少し違うことがあります。</li>
+    <li>画面の絵はイメージです。OS やブラウザのバージョンによって、ボタンの場所や名前が少し違うことがあります。</li>
     <li>LINE などのアプリの中で開いているときは、iPhone は Safari、Android は Chrome で開き直してから行ってください。</li>
     <li class="g-ios">iPhone では、ブラウザで遊んだ記録（クリアした面・中間セーブ）は、ホームのアイコンには引き継がれません。</li>
   </ul>
@@ -2241,7 +2241,7 @@ function drawHud() {
     inkText(`${Math.max(0, Pl.hp)}/${maxHp}`, bw + 24, 16.5, maxHp > 99 ? 13 : 14); x = 6 + bw + 92 + 8;
   }
   const mm = Math.floor(playTime / 60), ss = String(Math.floor(playTime % 60)).padStart(2, '0');
-  const status = `${unitAt(player.x)}　挑戦 ${attempts}　${mm}:${ss}${progress.easy ? '　EASY' : ''}${debug ? '　DEBUG' : ''}`;
+  const status = `${unitAt(player.x)}　挑戦 ${attempts} 回　${mm}:${ss}${progress.easy ? '　EASY' : ''}${debug ? '　DEBUG' : ''}`;
   ctx.font = fnt(15); let px = 15; const room = (gate.active ? 556 : 712) - x - 28; while (px > 10 && ctx.measureText(status).width > room) { px--; ctx.font = fnt(px); }   // 札からはみ出すなら字を小さくする
   tag(x, 4, Math.min(room + 24, ctx.measureText(status).width + 26), 23, null, 204); inkText(status, x + 16, 16.5, px);
   if (gate.active) {                                     // ボスの名前と体力
@@ -2251,7 +2251,7 @@ function drawHud() {
   if (state === 'playing' || state === 'paused') {       // ポーズの札：切った2本の棒
     tag(722, 4, 74, 23, state === 'paused' ? mix(P.tag, P.heart, 0.25) : null, 208);
     lp(rect(735, 9.5, 3.6, 12), P.ink, { seed: 209, amp: 0.25, shadow: false }); lp(rect(741.5, 9.5, 3.6, 12), P.ink, { seed: 210, amp: 0.25, shadow: false });
-    inkText(touchUI() ? '中断' : 'P/Esc', 752, 16.5, touchUI() ? 14 : 12);
+    inkText(touchUI() ? 'ポーズ' : 'P/Esc', 752, 16.5, touchUI() ? 14 : 12);
   }
 }
 function drawButtons() {                                 // 紙の札のボタン（押す方は藍に染める）
@@ -2264,10 +2264,10 @@ function drawButtons() {                                 // 紙の札のボタ�
 }
 function controlRows() {
   const tt = touchUI();
-  const rows = tt ? [['左の輪', '移動（押した所から左右になぞる）'], ['右下の上向きの札', 'ジャンプ（長押しで高く・ばねも高く）']]
-                  : [['← → / A D', '移動'], ['Space / Z / W / ↑', 'ジャンプ（長押しで高く・ばねも高く）']];
-  if (SWORD) rows.push(tt ? ['剣の札', '剣（弾を斬れる・壁を壊せる）'] : ['X / J / K', '剣（弾を斬れる・壁を壊せる）']);
-  rows.push(tt ? ['右上の「中断」', 'ポーズ / 再開'] : ['P / Esc', 'ポーズ / 再開']);
+  const rows = tt ? [['左下の輪', '押して左右に動かす'], ['右下の↑ボタン', 'ジャンプ　長押しで高く跳ぶ']]
+                  : [['← → / A D', '移動'], ['Space / Z / W / ↑', 'ジャンプ　長押しで高く跳ぶ']];
+  if (SWORD) rows.push(tt ? ['剣のボタン', '剣　弾を斬る・壁を壊す'] : ['X / J / K', '剣　弾を斬る・壁を壊す']);
+  rows.push(tt ? ['右上の「ポーズ」', 'ポーズ / 再開'] : ['P / Esc', 'ポーズ / 再開']);
   if (!tt) rows.push(['R', 'このステージを最初から']);
   return rows;
 }
@@ -2276,7 +2276,7 @@ function drawOverlay() {
   if (state === 'paused') {
     ctx.fillStyle = 'rgba(30,22,16,0.62)'; ctx.fillRect(0, 32, VW, VH - 32);
     sheet(170, 44, 460, 262, 230);
-    inkText('中断', VW / 2, 74, 28, '#2b2420', 'center'); inkText(`${STAGE}面　${ST.name}`, VW / 2, 100, 14, '#5a524b', 'center');
+    inkText('ポーズ', VW / 2, 74, 28, '#2b2420', 'center'); inkText(`${STAGE}面　${ST.name}`, VW / 2, 100, 14, '#5a524b', 'center');
     controlRows().forEach(([k, d], i) => { const y = 130 + i * 24; inkText(k, VW / 2 - 16, y, 14, PUP.kaki, 'right'); inkText(d, VW / 2 + 4, y, 14, '#2b2420'); });
     drawButtons();
   } else if (state === 'clear') {
@@ -2299,8 +2299,8 @@ function drawMenu() {
     lp([[110, 92], [690, 84], [700, 168], [102, 174]], PUP.kaki, { seed: 260, amp: 1.6, step: 8, sx: 3, sy: 4, tex: 0.6 });   // 題字の帯
     inkText('横スクロール　10ステージ', VW / 2, 130, 44, '#efe4cc', 'center', 700);
     sheet(150, 190, 500, 92, 261);
-    inkText(touchUI() ? '左側をなぞって移動　右下の札でジャンプ' : '← → 移動　Space ジャンプ', VW / 2, 214, 16, '#2b2420', 'center');
-    inkText(touchUI() ? '遊んでいる間は右上の「中断」でポーズ・操作説明' : '遊んでいる間は P / Esc でポーズ・操作説明', VW / 2, 240, 14, '#5a524b', 'center');
+    inkText(touchUI() ? '左側を押して左右に動かす　右下のボタンでジャンプ' : '← → 移動　Space ジャンプ', VW / 2, 214, 16, '#2b2420', 'center');
+    inkText(touchUI() ? '遊んでいる間は右上の「ポーズ」で操作説明' : '遊んでいる間は P / Esc でポーズ・操作説明', VW / 2, 240, 14, '#5a524b', 'center');
     inkText('タップ / Space でスタート', VW / 2, 266, 17, PUP.ai, 'center', 700);
     drawButtons();
   } else if (state === 'select') {
@@ -2314,7 +2314,7 @@ function drawMenu() {
       if (open) inkText(String(n), b.x + b.w / 2, b.y + 28, 24, '#2b2420', 'center', 700); else lockIcon(b.x + b.w / 2, b.y + 28);
       inkText(st.name, b.x + b.w / 2, b.y + 54, 14, '#2b2420', 'center');
       if (hasItem(n)) drawItem(n, b.x + 20, b.y + 20, n === 4 || n === 10 ? 0.6 : 0.5);   // 取った宝
-      if (cleared) inkText(`最少 ${progress.best[n] || '-'} 回`, b.x + b.w / 2, b.y + b.h - 13, 12, th.dark ? '#efe4cc' : '#2b2420', 'center');
+      if (cleared) inkText(`最少挑戦 ${progress.best[n] || '-'} 回`, b.x + b.w / 2, b.y + b.h - 13, 12, th.dark ? '#efe4cc' : '#2b2420', 'center');
       if (!debug && progress.resume && progress.resume.stage === n) { lp(rect(b.x + b.w - 24, b.y + 8, 3, 22), '#2b2420', { seed: 290, amp: 0.2, shadow: false }); lp(rect(b.x + b.w - 21, b.y + 8, 14, 9), PUP.ai, { seed: 291, amp: 0.3 }); }   // 中間セーブのある面に小さな旗
     }
     if (debug) inkText('デバッグモード：全ステージ選択可・開始地点を選べます', VW / 2, 365, 13, '#efe4cc', 'center');
