@@ -667,7 +667,7 @@ function startStage(n, startIndex = 0) {
   loadStage(n); attempts = 1; playTime = 0; debugStartX = null; cp = 0;
   if (startIndex > 0 && startIndex < checkpoints.length) cp = startIndex;
   if (startIndex === checkpoints.length) debugStartX = arena.L - 250;   // デバッグ：ボス部屋の前から
-  respawn(); banner = { text: `ステージ${n} ${ST.name}`, sub: '', t: 2.0 };
+  respawn(); banner = { text: `${n}面　${ST.name}`, sub: '', t: 2.0 };
 }
 function goSelect() { state = 'select'; selCursor = Math.min(9, Math.max(0, selCursor)); pointers.clear(); syncTouch(); }
 
@@ -807,13 +807,13 @@ function screenButtons() {
     return rowButtons(list.concat([{ id: 'back', label: '戻る' }]), 220, 110);
   }
   if (state === 'paused') {
-    const list = [{ id: 'resume', label: '▶ 再開' }, { id: 'retry', label: '↺ やり直し' }, { id: 'select', label: '☰ ステージ選択' }];
+    const list = [{ id: 'resume', label: '▶ 再開' }, { id: 'retry', label: '↺ やり直し' }, { id: 'select', label: '☰ 面を選ぶ' }];
     if (touchUI() && canFullscreen) list.push({ id: 'fs', label: '⛶ 全画面' });
     else if (showInstall()) list.push({ id: 'install', label: '全画面' });
     if (debug) list.push({ id: 'inv', label: invincible ? '無敵 ON' : '無敵 OFF' });
     return rowButtons(list, 324, list.length > 4 ? 124 : 150);
   }
-  if (state === 'clear') return rowButtons(STAGE < 10 ? [{ id: 'next', label: '▶ 次のステージ' }, { id: 'select', label: '☰ ステージ選択' }] : [{ id: 'select', label: '☰ ステージ選択' }], 280, 180);
+  if (state === 'clear') return rowButtons(STAGE < 10 ? [{ id: 'next', label: '▶ 次の面' }, { id: 'select', label: '☰ 面を選ぶ' }] : [{ id: 'select', label: '☰ 面を選ぶ' }], 280, 180);
   if (state === 'title' && showInstall()) return [{ id: 'install', label: '全画面で遊ぶ方法', x: VW / 2 - 120, y: 328, w: 240, h: 44 }];
   return [];
 }
@@ -825,7 +825,7 @@ function handleCornerTap(p) {                           // デバッグ：左上
   cornerTaps = cornerTaps.filter(c => now - c.t < 5000);
   if (cornerTaps.length && cornerTaps[cornerTaps.length - 1].side === side) cornerTaps = [];
   cornerTaps.push({ side, t: now });
-  if (cornerTaps.length >= 5) { debug = !debug; cornerTaps = []; banner = { text: debug ? 'デバッグモード ON' : 'デバッグモード OFF', sub: debug ? '全ステージ・中間地点・ボスから開始できます' : '', t: 2 }; }
+  if (cornerTaps.length >= 5) { debug = !debug; cornerTaps = []; banner = { text: debug ? 'デバッグモード ON' : 'デバッグモード OFF', sub: debug ? 'すべての面・中間地点・ボスから開始できます' : '', t: 2 }; }
   return true;
 }
 function canvasPoint(e) { const r = canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) * VW / r.width, y: (e.clientY - r.top) * VH / r.height }; }
@@ -2268,7 +2268,7 @@ function controlRows() {
                   : [['← → / A D', '移動'], ['Space / Z / W / ↑', 'ジャンプ　長押しで高く跳ぶ']];
   if (SWORD) rows.push(tt ? ['剣のボタン', '剣　弾を斬る・壁を壊す'] : ['X / J / K', '剣　弾を斬る・壁を壊す']);
   rows.push(tt ? ['右上の「ポーズ」', 'ポーズ / 再開'] : ['P / Esc', 'ポーズ / 再開']);
-  if (!tt) rows.push(['R', 'このステージを最初から']);
+  if (!tt) rows.push(['R', 'この面を最初から']);
   return rows;
 }
 function sheet(x, y, w, h, seed) { lp(rect(x, y, w, h), '#efe4cc', { seed, amp: 1.4, step: 8, sx: 3, sy: 4, tex: 0.6 }); }   // 生成りの紙1枚
@@ -2297,14 +2297,14 @@ function drawMenu() {
   ctx.fillStyle = 'rgba(30,22,16,0.35)'; ctx.fillRect(0, 0, VW, VH);
   if (state === 'title') {
     lp([[110, 92], [690, 84], [700, 168], [102, 174]], PUP.kaki, { seed: 260, amp: 1.6, step: 8, sx: 3, sy: 4, tex: 0.6 });   // 題字の帯
-    inkText('横スクロール　10ステージ', VW / 2, 130, 44, '#efe4cc', 'center', 700);
+    inkText('横スクロール　全10面', VW / 2, 130, 44, '#efe4cc', 'center', 700);
     sheet(150, 190, 500, 92, 261);
     inkText(touchUI() ? '左側を押して左右に動かす　右下のボタンでジャンプ' : '← → 移動　Space ジャンプ', VW / 2, 214, 16, '#2b2420', 'center');
     inkText(touchUI() ? '遊んでいる間は右上の「ポーズ」で操作説明' : '遊んでいる間は P / Esc でポーズ・操作説明', VW / 2, 240, 14, '#5a524b', 'center');
     inkText('タップ / Space でスタート', VW / 2, 266, 17, PUP.ai, 'center', 700);
     drawButtons();
   } else if (state === 'select') {
-    sheet(250, 44, 300, 44, 262); inkText('面をえらぶ', VW / 2, 67, 24, '#2b2420', 'center');
+    sheet(250, 44, 300, 44, 262); inkText('面を選ぶ', VW / 2, 67, 24, '#2b2420', 'center');
     for (const b of screenButtons()) {
       if (!b.n) continue;
       const n = b.n, st = STAGES[n - 1], open = unlocked(n), cleared = n <= progress.cleared, th = st.theme, sel = selCursor === n - 1;
@@ -2317,7 +2317,7 @@ function drawMenu() {
       if (cleared) inkText(`最少挑戦 ${progress.best[n] || '-'} 回`, b.x + b.w / 2, b.y + b.h - 13, 12, th.dark ? '#efe4cc' : '#2b2420', 'center');
       if (!debug && progress.resume && progress.resume.stage === n) { lp(rect(b.x + b.w - 24, b.y + 8, 3, 22), '#2b2420', { seed: 290, amp: 0.2, shadow: false }); lp(rect(b.x + b.w - 21, b.y + 8, 14, 9), PUP.ai, { seed: 291, amp: 0.3 }); }   // 中間セーブのある面に小さな旗
     }
-    if (debug) inkText('デバッグモード：全ステージ選択可・開始地点を選べます', VW / 2, 365, 13, '#efe4cc', 'center');
+    if (debug) inkText('デバッグモード：すべての面と開始地点を選べます', VW / 2, 365, 13, '#efe4cc', 'center');
     drawButtons();
   } else if (state === 'sections') {
     sheet(120, 92, 560, 120, 263);
